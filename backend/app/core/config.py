@@ -69,10 +69,10 @@ class Settings(BaseSettings):
     NEXT_PUBLIC_API_URL: str = "http://localhost:8000"
 
     # AI Providers
-    OPENAI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""  # Optional, not used by default
     GEMINI_API_KEY: str = ""
     CLAUDE_API_KEY: str = ""
-    PRIMARY_PROVIDER: str = "openai"
+    PRIMARY_PROVIDER: str = "gemini"  # Primary AI provider: gemini | openai | claude
     AUTO_FAILOVER: bool = True
 
     # Avatar Animation (D-ID)

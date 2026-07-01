@@ -208,6 +208,8 @@ OmneaxaFlow requires the following key variables to run. Add them to your enviro
 | `S3_BUCKET` | AWS S3 bucket name designated for storing avatars, raw media, and rendered files |
 | `JWT_SECRET` | Secret key used to encrypt and sign JWT credentials |
 | `ELEVENLABS_API_KEY` | ElevenLabs developer key for Custom Voice Cloning and high-fidelity TTS |
+| `GEMINI_API_KEY` | **Primary** Google Gemini API key for AI script generation and content processing |
+| `OPENAI_API_KEY` | *(Optional)* OpenAI API key — only needed if switching `PRIMARY_PROVIDER` to `openai` |
 | `RAZORPAY_KEY` | Razorpay payment gateway key |
 | `RAZORPAY_SECRET` | Razorpay integration secret |
 
