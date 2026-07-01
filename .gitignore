@@ -35,3 +35,5 @@ backend/media/tmp/
 # OS
 .DS_Store
 Thumbs.db
+docker-compose.yml.save git add .gitignore git commit -m Ignore docker-compose backup file git push origin main
+docker-compose.yml.save git add .gitignore git commit -m Ignore docker-compose backup file git push origin main
