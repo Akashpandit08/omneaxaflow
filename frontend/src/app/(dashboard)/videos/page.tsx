@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Film, Download, RefreshCw, AlertCircle, CheckCircle, Clock, Search, X } from "lucide-react";
+import { Film, Download, RefreshCw, AlertCircle, CheckCircle, Clock, MessageSquare } from "lucide-react";
 import api from "@/lib/api";
 import type { VideoListResponse, Video, VideoDownloadResponse } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { toast } from "@/components/ui/Toast";
-import { cn } from "@/lib/utils";
+import { CommentPanel } from "@/components/video/CommentPanel";
 
 function VideoStatusBadge({ status }: { status: string }) {
   if (status === "completed") {
@@ -25,7 +25,7 @@ function VideoStatusBadge({ status }: { status: string }) {
   return <Badge variant="slate"><Clock className="w-3 h-3 mr-1" /> Queued</Badge>;
 }
 
-function VideoCard({ video, onRetry, onDownload }: { video: Video, onRetry: (id: number) => void, onDownload: (id: number) => void }) {
+function VideoCard({ video, onRetry, onDownload, onComments }: { video: Video, onRetry: (id: number) => void, onDownload: (id: number) => void, onComments: (video: Video) => void }) {
   return (
     <Card className="flex flex-col overflow-hidden group">
       {/* Visual placeholder */}
@@ -64,6 +64,14 @@ function VideoCard({ video, onRetry, onDownload }: { video: Video, onRetry: (id:
         
         {/* Actions */}
         <div className="mt-4 pt-3 border-t border-surface-border flex gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+            onClick={() => onComments(video)}
+          >
+            Comments
+          </Button>
           {video.status === "completed" && (
             <Button
               variant="primary"
@@ -105,6 +113,7 @@ function VideoCard({ video, onRetry, onDownload }: { video: Video, onRetry: (id:
 export default function VideosPage() {
   const qc = useQueryClient();
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["videos-list"],
@@ -178,15 +187,24 @@ export default function VideosPage() {
           />
         </Card>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {data.items.map(video => (
-            <VideoCard 
-              key={video.id} 
-              video={video} 
-              onRetry={handleRetry} 
-              onDownload={handleDownload} 
+        <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+            {data.items.map(video => (
+              <VideoCard
+                key={video.id}
+                video={video}
+                onRetry={handleRetry}
+                onDownload={handleDownload}
+                onComments={setSelectedVideo}
+              />
+            ))}
+          </div>
+          {selectedVideo && (
+            <CommentPanel
+              videoId={selectedVideo.id}
+              onJumpToTime={(seconds) => toast.info(`Jump to ${seconds}s in the video player`)}
             />
-          ))}
+          )}
         </div>
       )}
     </div>

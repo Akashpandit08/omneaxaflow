@@ -14,8 +14,17 @@ import {
   Video,
   Mic,
   Code,
+  Settings,
+  Users,
+  Palette,
+  BarChart,
+  ChevronDown,
+  FileStack,
+  ShieldCheck,
+  ClipboardList
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 
@@ -26,6 +35,9 @@ const NAV_GROUPS = [
       { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
       { href: "/projects", icon: FolderOpen, label: "Projects" },
       { href: "/videos", icon: Video, label: "Videos" },
+      { href: "/templates", icon: FileStack, label: "Templates" },
+      { href: "/analytics", icon: BarChart, label: "Analytics" },
+      { href: "/audit", icon: ClipboardList, label: "Audit Logs" },
     ],
   },
   {
@@ -40,6 +52,15 @@ const NAV_GROUPS = [
     items: [
       { href: "/billing", icon: CreditCard, label: "Billing", badge: "Pro" },
       { href: "/profile", icon: User, label: "Profile" },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { href: "/settings/workspace", icon: Settings, label: "Workspace" },
+      { href: "/settings/team", icon: Users, label: "Team" },
+      { href: "/settings/branding", icon: Palette, label: "Branding" },
+      { href: "/settings/security", icon: ShieldCheck, label: "Security" },
       { href: "/settings/api", icon: Code, label: "Developer API" },
     ],
   },
@@ -48,6 +69,7 @@ const NAV_GROUPS = [
 export function Sidebar() {
   const pathname = usePathname();
   const { logout, user } = useAuthStore();
+  const { currentWorkspace, workspaces } = useWorkspaceStore();
 
   const initials = user?.full_name
     ?.split(" ")
@@ -61,17 +83,24 @@ export function Sidebar() {
       className="w-[var(--sidebar-width,240px)] bg-surface-card border-r border-surface-border flex flex-col h-full shrink-0"
       aria-label="Main navigation"
     >
-      {/* ── Logo ── */}
-      <div className="px-5 py-5 border-b border-surface-border">
-        <Link href="/dashboard" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 bg-gradient-brand rounded-lg flex items-center justify-center shadow-glow-sm group-hover:shadow-glow-brand transition-shadow">
-            <Play className="w-4 h-4 text-white fill-white" />
+      {/* ── Workspace Switcher ── */}
+      <div className="px-3 py-4 border-b border-surface-border">
+        <button className="flex items-center justify-between w-full p-2 rounded-xl hover:bg-surface-elevated transition-colors group">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-gradient-brand rounded-lg flex items-center justify-center shadow-glow-sm">
+              <span className="font-bold text-white text-sm">
+                {currentWorkspace?.name.charAt(0).toUpperCase() || "W"}
+              </span>
+            </div>
+            <div className="text-left">
+              <span className="block font-semibold text-slate-200 text-sm leading-none mb-1 max-w-[120px] truncate">
+                {currentWorkspace?.name || "Loading..."}
+              </span>
+              <span className="block text-[10px] text-slate-500 leading-none">Free Plan</span>
+            </div>
           </div>
-          <div>
-            <span className="font-bold text-white text-base leading-none">AiVideo</span>
-            <span className="block text-[10px] text-slate-500 leading-none mt-0.5">Studio</span>
-          </div>
-        </Link>
+          <ChevronDown className="w-4 h-4 text-slate-500 group-hover:text-slate-300 transition-colors" />
+        </button>
       </div>
 
       {/* ── Navigation ── */}

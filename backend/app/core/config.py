@@ -43,12 +43,19 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "aivideo-media"
     S3_PRESIGNED_URL_EXPIRY: int = 3600
 
-    # Razorpay
-    RAZORPAY_KEY_ID: str = ""
-    RAZORPAY_KEY_SECRET: str = ""
-    RAZORPAY_WEBHOOK_SECRET: str = ""
-    RAZORPAY_PRO_PLAN_ID: str = ""
-    RAZORPAY_BUSINESS_PLAN_ID: str = ""
+    # CloudFront CDN
+    CLOUDFRONT_DOMAIN: Optional[str] = None
+    CLOUDFRONT_KEY_PAIR_ID: Optional[str] = None
+    CLOUDFRONT_PRIVATE_KEY: Optional[str] = None
+
+    # Cashfree
+    CASHFREE_APP_ID: str = ""
+    CASHFREE_SECRET_KEY: str = ""
+    CASHFREE_WEBHOOK_SECRET: str = ""
+    CASHFREE_API_VERSION: str = "2023-08-01"
+    CASHFREE_ENV: str = "sandbox"  # sandbox or production
+    CASHFREE_PRO_PLAN_ID: str = ""
+    CASHFREE_BUSINESS_PLAN_ID: str = ""
 
     # ElevenLabs
     ELEVENLABS_API_KEY: str = ""
@@ -56,7 +63,7 @@ class Settings(BaseSettings):
 
     # SendGrid
     SENDGRID_API_KEY: Optional[str] = None
-    SENDGRID_FROM_EMAIL: str = "noreply@renderflow.app"
+    SENDGRID_FROM_EMAIL: str = "noreply@omneaxaflow.app"
 
     # Frontend
     NEXT_PUBLIC_API_URL: str = "http://localhost:8000"

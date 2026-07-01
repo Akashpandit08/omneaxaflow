@@ -5,6 +5,10 @@ from app.core.deps import CurrentUser, DBSession
 from app.models.voice import Voice
 from app.schemas.voice import VoiceListOut, VoiceOut, VoicePreviewOut, VoicePreviewRequest
 from app.services.tts import generate_tts_preview
+from app.models.advanced import VoiceClone
+from app.schemas.advanced import VoiceCloneCreate, VoiceCloneOut
+from app.workers.voice_tasks import train_voice_clone_task
+from app.services.analytics import track_event
 
 router = APIRouter()
 
@@ -50,3 +54,94 @@ async def voice_preview(request: Request, body: VoicePreviewRequest, current_use
     preview_text = body.text[:200]
     audio_url = await generate_tts_preview(voice, preview_text)
     return VoicePreviewOut(audio_url=audio_url)
+
+@router.post("/clone", response_model=VoiceCloneOut)
+async def clone_voice(
+    request: Request,
+    body: VoiceCloneCreate,
+    current_user: CurrentUser,
+    db: DBSession
+):
+    workspace = request.state.workspace
+    
+    clone = VoiceClone(
+        workspace_id=workspace.id,
+        user_id=current_user.id,
+        name=body.name,
+        provider=body.provider,
+        sample_audio_url="mock_sample_audio_url", # Ideally this would come from a file upload S3 URL
+        status="uploaded"
+    )
+    db.add(clone)
+    await db.commit()
+    await db.refresh(clone)
+    
+    # Trigger Celery task
+    from app.workers.celery_app import celery_app
+    celery_app.send_task("app.workers.voice_tasks.train_voice_clone_task", args=[clone.id])
+    
+    await track_event(db, workspace.id, "VOICE_CLONE_CREATED")
+    
+    return clone
+
+@router.get("/clones", response_model=list[VoiceCloneOut])
+async def list_voice_clones(
+    request: Request,
+    current_user: CurrentUser,
+    db: DBSession
+):
+    workspace = request.state.workspace
+    result = await db.execute(select(VoiceClone).where(VoiceClone.workspace_id == workspace.id))
+    return list(result.scalars().all())
+
+@router.get("/clones/{id}", response_model=VoiceCloneOut)
+async def get_voice_clone(
+    id: int,
+    request: Request,
+    current_user: CurrentUser,
+    db: DBSession
+):
+    workspace = request.state.workspace
+    result = await db.execute(select(VoiceClone).where(VoiceClone.id == id, VoiceClone.workspace_id == workspace.id))
+    clone = result.scalar_one_or_none()
+    if not clone:
+        raise HTTPException(status_code=404, detail="Voice clone not found")
+    return clone
+
+@router.delete("/clones/{id}", status_code=204)
+async def delete_voice_clone(
+    id: int,
+    request: Request,
+    current_user: CurrentUser,
+    db: DBSession
+):
+    workspace = request.state.workspace
+    result = await db.execute(select(VoiceClone).where(VoiceClone.id == id, VoiceClone.workspace_id == workspace.id))
+    clone = result.scalar_one_or_none()
+    if not clone:
+        raise HTTPException(status_code=404, detail="Voice clone not found")
+        
+    await db.delete(clone)
+    await db.commit()
+    
+    await track_event(db, workspace.id, "VOICE_CLONE_DELETED")
+    return None
+
+@router.post("/clones/{id}/preview")
+async def preview_voice_clone(
+    id: int,
+    request: Request,
+    current_user: CurrentUser,
+    db: DBSession
+):
+    workspace = request.state.workspace
+    result = await db.execute(select(VoiceClone).where(VoiceClone.id == id, VoiceClone.workspace_id == workspace.id))
+    clone = result.scalar_one_or_none()
+    if not clone:
+        raise HTTPException(status_code=404, detail="Voice clone not found")
+        
+    if clone.status != "ready" or not clone.preview_url:
+        raise HTTPException(status_code=400, detail="Preview not ready")
+        
+    await track_event(db, workspace.id, "VOICE_PREVIEW_GENERATED")
+    return {"preview_url": clone.preview_url}

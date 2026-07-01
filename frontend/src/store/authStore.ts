@@ -14,7 +14,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading:       boolean;
 
-  login:    (email: string, password: string) => Promise<void>;
+  login:    (email: string, password: string, mfaCode?: string, backupCode?: string) => Promise<"ok" | "mfa_required">;
   register: (email: string, password: string) => Promise<void>;
   logout:   () => void;
   fetchMe:  () => Promise<void>;
@@ -29,10 +29,18 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading:       false,
 
-      login: async (email, password) => {
+      login: async (email, password, mfaCode, backupCode) => {
         set({ isLoading: true });
         try {
-          const { data } = await api.post("/auth/login", { email, password });
+          const { data } = await api.post("/auth/login", {
+            email,
+            password,
+            mfa_code: mfaCode || undefined,
+            backup_code: backupCode || undefined,
+          });
+          if (data.mfa_required) {
+            return "mfa_required";
+          }
           localStorage.setItem("access_token",  data.access_token);
           localStorage.setItem("refresh_token", data.refresh_token);
           set({
@@ -41,6 +49,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
           });
           await get().fetchMe();
+          return "ok";
         } finally {
           set({ isLoading: false });
         }

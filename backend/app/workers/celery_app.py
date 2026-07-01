@@ -10,7 +10,7 @@ celery_app = Celery(
     "aivideo",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.workers.video_tasks"],
+    include=["app.workers.video_tasks", "app.workers.import_tasks", "app.workers.translation_tasks", "app.workers.voice_tasks", "app.workers.scorm_tasks"],
 )
 
 celery_app.conf.update(

@@ -5,9 +5,10 @@
 export interface User {
   id: number;
   email: string;
-  full_name: string;
-  is_active: boolean;
-  is_superuser: boolean;
+  full_name?: string;
+  is_active?: boolean;
+  is_superuser?: boolean;
+  mfa_enabled?: boolean;
 }
 
 export interface TokenResponse {
@@ -173,6 +174,67 @@ export interface DashboardStatsResponse {
     completed: number;
     failed: number;
   };
+}
+
+export interface Comment {
+  id: number;
+  video_id: number;
+  user_id: number;
+  workspace_id: number;
+  timestamp_seconds: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Template {
+  id: number;
+  workspace_id: number;
+  creator_id: number;
+  name: string;
+  description: string | null;
+  project_snapshot_json: Partial<Project>;
+  thumbnail_url: string | null;
+  is_shared: boolean;
+  created_at: string;
+}
+
+export interface TemplateListResponse {
+  items: Template[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export type PermissionValue = "view" | "edit" | "delete" | "share";
+
+export interface ContentPermission {
+  id: number;
+  resource_type: string;
+  resource_id: number;
+  user_id: number;
+  permission: PermissionValue;
+  granted_by: number;
+  created_at: string;
+}
+
+export interface AuditLog {
+  id: number;
+  workspace_id: number | null;
+  user_id: number | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: number | null;
+  log_metadata: Record<string, unknown> | null;
+  ip_address: string | null;
+  created_at: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+  page: number;
+  page_size: number;
 }
 
 // ---------- API Keys ----------

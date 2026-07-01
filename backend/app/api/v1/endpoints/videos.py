@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import CurrentUser, CurrentUserAnyAuth, DBSession
+from app.core.deps import CurrentUser, CurrentUserAnyAuth, DBSession, CurrentWorkspace, RequireRole, user_has_permission
 from app.main import limiter
 from app.models.project import Project, ProjectStatus
 from app.models.subscription import Subscription
@@ -29,12 +29,13 @@ router = APIRouter()
 @router.get("", response_model=VideoListOut)
 async def list_videos(
     current_user: CurrentUser,
+    workspace: CurrentWorkspace,
     db: DBSession,
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
     search: Optional[str] = Query(None, description="Search by project title or description"),
 ):
-    query = select(Video).join(Project).where(Project.owner_id == current_user.id)
+    query = select(Video).join(Project).where(Video.workspace_id == workspace.id)
 
     if search:
         search_term = f"%{search}%"
@@ -76,14 +77,15 @@ async def _check_subscription_quota(user_id: int, db: DBSession):
     response_model=VideoOut, 
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue video rendering task",
-    description="Validates a project script and dispatches a Celery task to the AI background worker to generate voices, animate avatars, and render the final MP4."
+    description="Validates a project script and dispatches a Celery task to the AI background worker to generate voices, animate avatars, and render the final MP4.",
+    dependencies=[RequireRole(["owner", "admin", "member"])]
 )
 @limiter.limit("10/minute")
-async def render_video(request: Request, body: RenderRequest, current_user: CurrentUserAnyAuth, db: DBSession):
+async def render_video(request: Request, body: RenderRequest, current_user: CurrentUserAnyAuth, workspace: CurrentWorkspace, db: DBSession):
     # Fetch project and verify ownership
     proj_result = await db.execute(
         select(Project).where(
-            Project.id == body.project_id, Project.owner_id == current_user.id
+            Project.id == body.project_id, Project.workspace_id == workspace.id
         )
     )
     project = proj_result.scalar_one_or_none()
@@ -99,7 +101,7 @@ async def render_video(request: Request, body: RenderRequest, current_user: Curr
     await _check_subscription_quota(current_user.id, db)
 
     # Create video record
-    video = Video(project_id=project.id, status=VideoStatus.queued, progress_percent=0)
+    video = Video(project_id=project.id, workspace_id=workspace.id, status=VideoStatus.queued, progress_percent=0)
     db.add(video)
     project.status = ProjectStatus.rendering
     await db.commit()
@@ -111,6 +113,9 @@ async def render_video(request: Request, body: RenderRequest, current_user: Curr
     await db.commit()
     await db.refresh(video)
 
+    from app.services.analytics import track_event
+    await track_event(db, workspace.id, "render.started", user_id=current_user.id, project_id=project.id, video_id=video.id)
+
     return video
 
 
@@ -119,18 +124,21 @@ async def render_video(request: Request, body: RenderRequest, current_user: Curr
     response_model=VideoOut, 
     status_code=status.HTTP_202_ACCEPTED,
     summary="Retry a failed video render",
-    description="Resets the video's status back to queued and requeues the Celery rendering task."
+    description="Resets the video's status back to queued and requeues the Celery rendering task.",
+    dependencies=[RequireRole(["owner", "admin", "member"])]
 )
 @limiter.limit("10/minute")
-async def retry_video(request: Request, video_id: int, current_user: CurrentUser, db: DBSession):
+async def retry_video(request: Request, video_id: int, current_user: CurrentUser, workspace: CurrentWorkspace, db: DBSession):
     result = await db.execute(
         select(Video)
-        .join(Project)
-        .where(Video.id == video_id, Project.owner_id == current_user.id)
+        .where(Video.id == video_id, Video.workspace_id == workspace.id)
     )
     video = result.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    role = getattr(request.state, "workspace_role", None)
+    if not await user_has_permission(db, current_user, workspace.id, "video", video.id, "edit", role):
+        raise HTTPException(status_code=403, detail="Insufficient permission")
         
     if video.status not in (VideoStatus.failed, VideoStatus.completed):
         raise HTTPException(status_code=400, detail="Can only retry failed or completed videos")
@@ -162,15 +170,17 @@ async def retry_video(request: Request, video_id: int, current_user: CurrentUser
     summary="Get video rendering status",
     description="Poll this endpoint to receive the current background worker progress percent and status of a specific video."
 )
-async def get_video_status(video_id: int, current_user: CurrentUserAnyAuth, db: DBSession):
+async def get_video_status(video_id: int, request: Request, current_user: CurrentUserAnyAuth, workspace: CurrentWorkspace, db: DBSession):
     result = await db.execute(
         select(Video)
-        .join(Project)
-        .where(Video.id == video_id, Project.owner_id == current_user.id)
+        .where(Video.id == video_id, Video.workspace_id == workspace.id)
     )
     video = result.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    role = getattr(request.state, "workspace_role", None)
+    if not await user_has_permission(db, current_user, workspace.id, "video", video.id, "view", role):
+        raise HTTPException(status_code=403, detail="Insufficient permission")
 
     return VideoStatusOut(
         video_id=video.id,
@@ -181,34 +191,41 @@ async def get_video_status(video_id: int, current_user: CurrentUserAnyAuth, db: 
 
 
 @router.get("/{video_id}/download", response_model=VideoDownloadOut)
-async def get_download_url(video_id: int, current_user: CurrentUserAnyAuth, db: DBSession):
+async def get_download_url(video_id: int, request: Request, current_user: CurrentUserAnyAuth, workspace: CurrentWorkspace, db: DBSession):
     result = await db.execute(
         select(Video)
-        .join(Project)
-        .where(Video.id == video_id, Project.owner_id == current_user.id)
+        .where(Video.id == video_id, Video.workspace_id == workspace.id)
     )
     video = result.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    role = getattr(request.state, "workspace_role", None)
+    if not await user_has_permission(db, current_user, workspace.id, "video", video.id, "view", role):
+        raise HTTPException(status_code=403, detail="Insufficient permission")
     if video.status != VideoStatus.completed:
         raise HTTPException(status_code=400, detail="Video is not ready yet")
     if not video.video_s3_key:
         raise HTTPException(status_code=500, detail="Video file not found in storage")
 
+    from app.services.analytics import track_event
+    await track_event(db, workspace.id, "video.downloaded", user_id=current_user.id, project_id=video.project_id, video_id=video.id)
+
     url, expiry = get_presigned_download_url(video.video_s3_key)
     return VideoDownloadOut(download_url=url, expires_in=expiry)
 
 
-@router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_video(video_id: int, current_user: CurrentUser, db: DBSession):
+@router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[RequireRole(["owner", "admin"])])
+async def delete_video(video_id: int, request: Request, current_user: CurrentUser, workspace: CurrentWorkspace, db: DBSession):
     result = await db.execute(
         select(Video)
-        .join(Project)
-        .where(Video.id == video_id, Project.owner_id == current_user.id)
+        .where(Video.id == video_id, Video.workspace_id == workspace.id)
     )
     video = result.scalar_one_or_none()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+    role = getattr(request.state, "workspace_role", None)
+    if not await user_has_permission(db, current_user, workspace.id, "video", video.id, "delete", role):
+        raise HTTPException(status_code=403, detail="Insufficient permission")
 
     from app.services.storage import delete_object
     from starlette.concurrency import run_in_threadpool

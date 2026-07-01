@@ -16,7 +16,7 @@ def send_video_ready_email(to_email: str, project_title: str) -> None:
         message = Mail(
             from_email=settings.SENDGRID_FROM_EMAIL,
             to_emails=to_email,
-            subject=f"Your RenderFlow video is ready: {project_title}",
+            subject=f"Your OmneaxaFlow video is ready: {project_title}",
             plain_text_content=(
                 f"Your video for '{project_title}' has finished rendering and is ready to view."
             ),
@@ -37,7 +37,7 @@ def send_video_failed_email(to_email: str, project_title: str, error_message: st
         message = Mail(
             from_email=settings.SENDGRID_FROM_EMAIL,
             to_emails=to_email,
-            subject=f"Your RenderFlow video failed: {project_title}",
+            subject=f"Your OmneaxaFlow video failed: {project_title}",
             plain_text_content=(
                 f"Your video for '{project_title}' could not be rendered.\n\n"
                 f"Error: {error_message}"

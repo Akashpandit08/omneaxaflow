@@ -12,6 +12,9 @@ from app.models.webhook import Webhook
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceInvitation
 from app.models.analytics import AnalyticsEvent, WorkspaceAnalyticsDaily
 from app.models.branding import WorkspaceBranding
+from app.models.collaboration import AuditLog, Comment, ContentPermission, Template
+from app.models.content import ImportJob, BrandGlossary, VideoTranslation
+from app.models.advanced import VoiceClone, Quiz, QuizQuestion, SCORMPackage
 
 __all__ = [
     "Base",
@@ -31,4 +34,15 @@ __all__ = [
     "AnalyticsEvent",
     "WorkspaceAnalyticsDaily",
     "WorkspaceBranding",
+    "AuditLog",
+    "Comment",
+    "ContentPermission",
+    "Template",
+    "ImportJob",
+    "BrandGlossary",
+    "VideoTranslation",
+    "VoiceClone",
+    "Quiz",
+    "QuizQuestion",
+    "SCORMPackage"
 ]

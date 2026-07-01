@@ -49,10 +49,36 @@ def upload_bytes(data: bytes, s3_key: str, content_type: str = "application/octe
     return s3_key
 
 
+import datetime
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+import base64
+from botocore.signers import CloudFrontSigner
+
+def rsa_signer(message):
+    private_key = serialization.load_pem_private_key(
+        settings.CLOUDFRONT_PRIVATE_KEY.encode('utf-8'),
+        password=None,
+        backend=default_backend()
+    )
+    return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())
+
 def get_presigned_download_url(s3_key: str) -> Tuple[str, int]:
-    """Return a presigned download URL and its expiry in seconds."""
-    client = get_s3_client()
+    """Return a presigned download URL (CloudFront if configured, otherwise S3) and its expiry in seconds."""
     expiry = settings.S3_PRESIGNED_URL_EXPIRY
+    
+    if settings.CLOUDFRONT_DOMAIN and settings.CLOUDFRONT_KEY_PAIR_ID and settings.CLOUDFRONT_PRIVATE_KEY:
+        cloudfront_signer = CloudFrontSigner(settings.CLOUDFRONT_KEY_PAIR_ID, rsa_signer)
+        expire_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=expiry)
+        url = f"https://{settings.CLOUDFRONT_DOMAIN}/{s3_key}"
+        signed_url = cloudfront_signer.generate_presigned_url(
+            url, date_less_than=expire_date
+        )
+        return signed_url, expiry
+    
+    client = get_s3_client()
     url = client.generate_presigned_url(
         "get_object",
         Params={"Bucket": settings.S3_BUCKET_NAME, "Key": s3_key},

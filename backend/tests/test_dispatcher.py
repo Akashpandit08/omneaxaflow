@@ -27,11 +27,11 @@ def test_signature_calculation():
         headers = args[3]
         
         assert url == "https://example.com/hook"
-        assert "X-RenderFlow-Signature" in headers
+        assert "X-OmneaxaFlow-Signature" in headers
         
         # Verify signature
         expected_sig = hmac.new(b"test_secret", content, hashlib.sha256).hexdigest()
-        assert headers["X-RenderFlow-Signature"] == f"sha256={expected_sig}"
+        assert headers["X-OmneaxaFlow-Signature"] == f"sha256={expected_sig}"
 
 
 def test_dispatcher_retry_logic():

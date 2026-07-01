@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { useWorkspaceStore } from '../store/workspaceStore';
 import type { 
   Avatar, 
   ApiKey, 
@@ -21,9 +22,16 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().accessToken;
+    const workspace = useWorkspaceStore.getState().currentWorkspace;
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    if (workspace && workspace.id) {
+      config.headers['X-Workspace-ID'] = workspace.id.toString();
+    }
+    
     return config;
   },
   (error) => Promise.reject(error)

@@ -201,6 +201,9 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
             _update_progress(db, video, 100, "Pipeline complete ✓")
             db.commit()
 
+            from app.services.analytics import track_event_sync
+            track_event_sync(db, video.workspace_id, "render.completed", user_id=project.owner_id, project_id=project.id, video_id=video.id)
+
             logger.info(
                 f"[Task {self.request.id}] ✓ Multi-scene pipeline complete for video {video_id} → {video_s3_key}"
             )
@@ -338,6 +341,9 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
         _update_progress(db, video, 100, "Pipeline complete ✓")
         db.commit()
 
+        from app.services.analytics import track_event_sync
+        track_event_sync(db, video.workspace_id, "render.completed", user_id=project.owner_id, project_id=project.id, video_id=video.id)
+
         logger.info(
             f"[Task {self.request.id}] ✓ Pipeline complete for video {video_id} → {video_s3_key}"
         )
@@ -437,6 +443,9 @@ def _mark_failed(db, video_id: int, project_id: int, error_msg: str):
                 dispatch_webhook_event(db, project.owner_id, "video.failed", payload)
             except Exception as e:
                 logger.error(f"Failed to dispatch video.failed webhook: {e}")
+                
+            from app.services.analytics import track_event_sync
+            track_event_sync(db, video.workspace_id, "render.failed", user_id=project.owner_id, project_id=project.id, video_id=video_id, metadata={"error": error_msg[:500]})
 
         db.commit()
     except Exception as inner_exc:

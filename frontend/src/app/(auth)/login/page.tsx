@@ -13,6 +13,8 @@ import { useAuthStore } from "@/store/authStore";
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(1, "Password is required"),
+  mfaCode: z.string().optional(),
+  backupCode: z.string().optional(),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -20,6 +22,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { login, isLoading } = useAuthStore();
+  const [mfaRequired, setMfaRequired] = useState(false);
 
   const {
     register,
@@ -31,7 +34,12 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginFormValues) => {
     try {
-      await login(data.email, data.password);
+      const result = await login(data.email, data.password, data.mfaCode, data.backupCode);
+      if (result === "mfa_required") {
+        setMfaRequired(true);
+        toast.error("Enter your MFA code to continue");
+        return;
+      }
       toast.success("Welcome back!");
       router.push("/dashboard");
     } catch (error: any) {
@@ -66,6 +74,27 @@ export default function LoginPage() {
             )}
           </div>
 
+          {mfaRequired && (
+            <div className="space-y-4 rounded-lg border border-white/10 bg-white/5 p-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Authenticator code</label>
+                <input
+                  {...register("mfaCode")}
+                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors text-white placeholder-gray-500"
+                  placeholder="123456"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Backup code</label>
+                <input
+                  {...register("backupCode")}
+                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-colors text-white placeholder-gray-500"
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
             <input
@@ -98,3 +127,4 @@ export default function LoginPage() {
     </div>
   );
 }
+import { useState } from "react";

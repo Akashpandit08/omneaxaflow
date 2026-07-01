@@ -93,20 +93,26 @@ def dispatch_webhook_event(db, user_id: int, event_type: str, payload: dict) -> 
                 ).hexdigest()
 
                 headers = {
-                    "X-RenderFlow-Signature": f"sha256={signature}",
-                    "X-RenderFlow-Event": event_type,
-                    "X-RenderFlow-Delivery": event_id,
+                    "X-OmneaxaFlow-Signature": f"sha256={signature}",
+                    "X-OmneaxaFlow-Event": event_type,
+                    "X-OmneaxaFlow-Delivery": event_id,
                     "Content-Type": "application/json",
-                    "User-Agent": "RenderFlow-Webhooks/1.0",
+                    "User-Agent": "OmneaxaFlow-Webhooks/1.0",
                 }
 
-                _deliver_with_retry(client, webhook.url, raw_body, headers)
+                if _deliver_with_retry(client, webhook.url, raw_body, headers):
+                    from app.services.analytics import track_event_sync
+                    track_event_sync(db, webhook.workspace_id, "webhook.delivered", user_id=user_id, metadata={"webhook_id": webhook.id, "event_type": event_type})
+                else:
+                    from app.services.analytics import track_event_sync
+                    track_event_sync(db, webhook.workspace_id, "webhook.failed", user_id=user_id, metadata={"webhook_id": webhook.id, "event_type": event_type})
             except Exception as e:
                 # Catch all errors for individual webhooks so one doesn't break the rest
                 logger.error(f"Failed to deliver webhook {webhook.id}: {str(e)}")
+                from app.services.analytics import track_event_sync
+                track_event_sync(db, webhook.workspace_id, "webhook.failed", user_id=user_id, metadata={"webhook_id": webhook.id, "event_type": event_type, "error": str(e)})
 
-
-def _deliver_with_retry(client: httpx.Client, url: str, content: bytes, headers: dict[str, str]):
+def _deliver_with_retry(client: httpx.Client, url: str, content: bytes, headers: dict[str, str]) -> bool:
     import time
     max_attempts = 3
     
@@ -129,15 +135,16 @@ def _deliver_with_retry(client: httpx.Client, url: str, content: bytes, headers:
             elif 400 <= response.status_code < 500:
                 # Non-retryable client error
                 logger.warning(f"Webhook delivery failed with {response.status_code}")
-                return
+                return False
             else:
                 # Success (2xx) or redirects (3xx handled by client.post if configured, but default is no redirect)
                 # Webhook spec usually considers 2xx as success
                 if 200 <= response.status_code < 300:
-                    return
+                    return True
                 
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as e:
             if attempt < max_attempts - 1:
                 time.sleep(2 ** attempt)
                 continue
             raise e
+    return False

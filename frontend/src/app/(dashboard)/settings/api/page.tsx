@@ -186,7 +186,7 @@ export default function ApiSettingsPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">API Keys</h2>
-              <p className="text-sm text-slate-400">Authenticate your requests to the RenderFlow API.</p>
+              <p className="text-sm text-slate-400">Authenticate your requests to the OmneaxaFlow API.</p>
             </div>
           </div>
         </div>
