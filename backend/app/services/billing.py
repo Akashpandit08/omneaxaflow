@@ -1,46 +1,82 @@
 import hmac
 import hashlib
-import razorpay
+import json
+import httpx
 from typing import Optional, Dict, Any
 
 from app.core.config import settings
 
-def get_razorpay_client() -> razorpay.Client:
-    """Initialize and return the Razorpay client."""
-    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
-    return client
+def get_cashfree_headers() -> Dict[str, str]:
+    return {
+        "x-client-id": settings.CASHFREE_APP_ID,
+        "x-client-secret": settings.CASHFREE_SECRET_KEY,
+        "x-api-version": settings.CASHFREE_API_VERSION,
+        "Content-Type": "application/json"
+    }
 
-def create_customer(name: str, email: str) -> str:
-    """Create a Razorpay customer and return the customer ID."""
-    client = get_razorpay_client()
-    customer = client.customer.create({
-        "name": name,
-        "email": email
-    })
-    return customer["id"]
+def get_cashfree_base_url() -> str:
+    if settings.CASHFREE_ENV == "production":
+        return "https://api.cashfree.com/pg"
+    return "https://sandbox.cashfree.com/pg"
 
-def create_subscription(customer_id: str, plan_id: str) -> Dict[str, Any]:
-    """Create a Razorpay subscription and return the details."""
-    client = get_razorpay_client()
-    subscription = client.subscription.create({
-        "plan_id": plan_id,
-        "customer_id": customer_id,
-        "total_count": 12, # E.g., 12 months/billing cycles
-        "customer_notify": 1
-    })
-    return subscription
+def create_cashfree_order(
+    order_id: str,
+    amount_cents: int,
+    customer_id: str,
+    customer_email: str,
+    customer_phone: str = "9999999999"
+) -> Dict[str, Any]:
+    """Create a Cashfree payment order and return the details."""
+    url = f"{get_cashfree_base_url()}/orders"
+    headers = get_cashfree_headers()
+    
+    amount_inr = round(amount_cents / 100.0, 2)
+    
+    payload = {
+        "order_id": order_id,
+        "order_amount": amount_inr,
+        "order_currency": "INR",
+        "customer_details": {
+            "customer_id": customer_id,
+            "customer_email": customer_email,
+            "customer_phone": customer_phone
+        },
+        "order_meta": {
+            "return_url": f"{settings.NEXT_PUBLIC_API_URL.replace('8000', '3000')}/billing?order_id={order_id}"
+        }
+    }
+    
+    with httpx.Client() as client:
+        response = client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
 
-def cancel_subscription(subscription_id: str, cancel_at_cycle_end: bool = False) -> Dict[str, Any]:
-    """Cancel a Razorpay subscription."""
-    client = get_razorpay_client()
-    return client.subscription.cancel(subscription_id, {"cancel_at_cycle_end": 1 if cancel_at_cycle_end else 0})
+def get_cashfree_order(order_id: str) -> Dict[str, Any]:
+    """Fetch order details from Cashfree."""
+    url = f"{get_cashfree_base_url()}/orders/{order_id}"
+    headers = get_cashfree_headers()
+    
+    with httpx.Client() as client:
+        response = client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
-def verify_webhook_signature(payload_body: str, signature: str) -> bool:
-    """Verify the Razorpay webhook signature."""
-    secret = settings.RAZORPAY_WEBHOOK_SECRET
-    expected_signature = hmac.new(
-        bytes(secret, 'utf-8'),
-        msg=bytes(payload_body, 'utf-8'),
-        digestmod=hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected_signature, signature)
+def verify_cashfree_webhook_signature(
+    payload_body: str,
+    signature: str,
+    timestamp: str
+) -> bool:
+    """Verify the Cashfree webhook signature."""
+    if not settings.CASHFREE_WEBHOOK_SECRET:
+        return True # Fallback for development if secret not set
+        
+    signature_data = timestamp + payload_body
+    computed_signature = hmac.new(
+        settings.CASHFREE_WEBHOOK_SECRET.encode("utf-8"),
+        signature_data.encode("utf-8"),
+        hashlib.sha256
+    ).digest()
+    
+    import base64
+    encoded_signature = base64.b64encode(computed_signature).decode("utf-8")
+    return hmac.compare_digest(encoded_signature, signature)

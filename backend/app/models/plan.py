@@ -19,5 +19,6 @@ class Plan(Base):
     storage_gb: Mapped[int] = mapped_column(Integer, nullable=False)
     price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     razorpay_plan_id: Mapped[str] = mapped_column(String(100), nullable=True)
+    cashfree_plan_id: Mapped[str] = mapped_column(String(100), nullable=True)
 
     subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="plan")

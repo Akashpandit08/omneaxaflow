@@ -1,25 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { CreditCard, Check, Zap, Sparkles, ExternalLink, Calendar } from "lucide-react";
+import { CreditCard, Check, Zap, Sparkles, ExternalLink, Calendar, CheckCircle } from "lucide-react";
 import api from "@/lib/api";
 import type { Subscription, Plan, BillingHistory as IBillingHistory } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { toast } from "@/components/ui/Toast";
-import { formatDateRelative } from "@/lib/utils";
 import Head from "next/head";
 
 declare global {
   interface Window {
-    Razorpay: any;
+    Cashfree: any;
   }
 }
 
 export default function BillingPage() {
   const [isProcessing, setIsProcessing] = useState<number | null>(null);
+  const [orderVerified, setOrderVerified] = useState(false);
+  const searchParams = useSearchParams();
 
   const { data: subscription, refetch: refetchSub } = useQuery({
     queryKey: ["subscription"],
@@ -36,35 +38,51 @@ export default function BillingPage() {
     queryFn: () => api.get<IBillingHistory[]>("/subscriptions/history").then((r) => r.data),
   });
 
+  // Handle Cashfree return_url redirect callback
+  useEffect(() => {
+    const returnOrderId = searchParams.get("order_id");
+    if (returnOrderId && !orderVerified) {
+      setOrderVerified(true);
+      verifyPayment(returnOrderId);
+    }
+  }, [searchParams]);
+
+  const verifyPayment = async (orderId: string) => {
+    try {
+      await api.post(`/subscriptions/verify-order?order_id=${orderId}`);
+      toast.success("Payment verified! Your plan has been upgraded.");
+      refetchSub();
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      if (detail && detail.includes("ACTIVE")) {
+        toast.success("Subscription already active.");
+        refetchSub();
+      } else {
+        toast.error(detail || "Payment verification failed. Please contact support.");
+      }
+    }
+  };
+
   const handleUpgrade = async (plan: Plan) => {
     if (plan.price_cents === 0) return;
     setIsProcessing(plan.id);
     try {
-      // 1. Create Razorpay Subscription/Checkout session on backend
+      // 1. Create a Cashfree order via backend
       const { data: checkoutData } = await api.post("/subscriptions/checkout", { plan_id: plan.id });
-      
-      // 2. Initialize Razorpay Checkout
-      const options = {
-        key: checkoutData.key_id,
-        subscription_id: checkoutData.subscription_id,
-        name: "Antigravity AI Video",
-        description: `Upgrade to ${plan.name}`,
-        handler: function (response: any) {
-          toast.success("Subscription upgraded successfully!");
-          refetchSub();
-        },
-        theme: {
-          color: "#8b5cf6" // brand-500
-        }
-      };
-      
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response: any){
-        toast.error(`Payment failed: ${response.error.description}`);
+
+      // 2. Initialize Cashfree SDK and open checkout
+      const cashfree = await window.Cashfree({
+        mode: checkoutData.cf_env === "production" ? "production" : "sandbox",
       });
-      rzp.open();
+
+      const checkoutOptions = {
+        paymentSessionId: checkoutData.payment_session_id,
+        returnUrl: `${window.location.origin}/billing?order_id=${checkoutData.order_id}`,
+      };
+
+      cashfree.checkout(checkoutOptions);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to initiate checkout");
+      toast.error(err.response?.data?.detail || "Failed to initiate Cashfree checkout");
     } finally {
       setIsProcessing(null);
     }
@@ -72,14 +90,14 @@ export default function BillingPage() {
 
   return (
     <>
-      {/* Load Razorpay SDK */}
-      <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+      {/* Load Cashfree SDK v3 */}
+      <script src="https://sdk.cashfree.com/js/v3/cashfree.js" />
 
       <div className="space-y-8 animate-fade-in max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row gap-8 items-start">
           <div className="flex-1 space-y-1">
             <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <CreditCard className="w-6 h-6 text-brand-400" /> Billing & Plans
+              <CreditCard className="w-6 h-6 text-brand-400" /> Billing &amp; Plans
             </h1>
             <p className="text-sm text-slate-400">Manage your subscription and view billing history.</p>
           </div>
@@ -168,11 +186,14 @@ export default function BillingPage() {
                   <Button 
                     variant={isCurrentPlan ? "secondary" : plan.tier === "pro" ? "primary" : "outline"} 
                     className="w-full"
-                    disabled={isCurrentPlan || isProcessing === plan.id}
-                    loading={isProcessing === plan.id}
+                    disabled={isCurrentPlan || isProcessing === plan.id || plan.price_cents === 0}
                     onClick={() => handleUpgrade(plan)}
                   >
-                    {isCurrentPlan ? "Current Plan" : "Upgrade"}
+                    {isCurrentPlan ? (
+                      <span className="flex items-center gap-1"><CheckCircle className="w-4 h-4" /> Current Plan</span>
+                    ) : plan.price_cents === 0 ? "Free" : (
+                      isProcessing === plan.id ? "Processing..." : "Upgrade"
+                    )}
                   </Button>
                 </Card>
               );
@@ -197,7 +218,7 @@ export default function BillingPage() {
                       <th className="px-6 py-3 font-medium">Date</th>
                       <th className="px-6 py-3 font-medium">Amount</th>
                       <th className="px-6 py-3 font-medium">Status</th>
-                      <th className="px-6 py-3 font-medium">Invoice</th>
+                      <th className="px-6 py-3 font-medium">Payment ID</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -215,10 +236,8 @@ export default function BillingPage() {
                           </Badge>
                         </td>
                         <td className="px-6 py-4">
-                          {item.invoice_url ? (
-                            <a href={item.invoice_url} target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:text-brand-300 flex items-center gap-1">
-                              View <ExternalLink className="w-3 h-3" />
-                            </a>
+                          {item.cashfree_payment_id ? (
+                            <span className="text-slate-400 text-xs font-mono">{item.cashfree_payment_id}</span>
                           ) : (
                             <span className="text-slate-500">-</span>
                           )}

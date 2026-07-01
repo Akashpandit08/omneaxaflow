@@ -141,6 +141,7 @@ export interface Plan {
   storage_gb: number;
   price_cents: number;
   razorpay_plan_id: string | null;
+  cashfree_plan_id: string | null;
 }
 
 export interface Subscription {
@@ -150,6 +151,7 @@ export interface Subscription {
   videos_used_this_period: number;
   current_period_end: string | null;
   razorpay_subscription_id: string | null;
+  cashfree_order_id: string | null;
 }
 
 export interface BillingHistory {
@@ -159,6 +161,7 @@ export interface BillingHistory {
   date: string;
   razorpay_payment_id: string | null;
   razorpay_invoice_id: string | null;
+  cashfree_payment_id: string | null;
   invoice_url: string | null;
 }
 

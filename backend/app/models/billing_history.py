@@ -18,6 +18,7 @@ class BillingHistory(Base):
     
     razorpay_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     razorpay_invoice_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cashfree_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     invoice_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     subscription: Mapped["Subscription"] = relationship(back_populates="history")

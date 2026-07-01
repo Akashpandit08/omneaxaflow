@@ -1,6 +1,7 @@
 from datetime import datetime, UTC
 import json
-from typing import List
+import uuid
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Header, status
 from sqlalchemy import select
@@ -12,7 +13,7 @@ from app.models.subscription import Subscription
 from app.models.plan import Plan
 from app.models.billing_history import BillingHistory
 from app.schemas.subscription import SubscriptionOut, PlanOut, BillingHistoryOut, CheckoutRequest, CheckoutResponse
-from app.services.billing import create_subscription, verify_webhook_signature
+from app.services.billing import create_cashfree_order, get_cashfree_order, verify_cashfree_webhook_signature
 
 router = APIRouter()
 
@@ -34,49 +35,84 @@ async def get_my_subscription(current_user: CurrentUser, db: DBSession):
     )
     sub = result.scalar_one_or_none()
     if not sub:
-        # Default fallback logic or raise error
         raise HTTPException(status_code=404, detail="No subscription found")
     return sub
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(body: CheckoutRequest, current_user: CurrentUser, db: DBSession):
-    # Fetch Plan
     plan_result = await db.execute(select(Plan).where(Plan.id == body.plan_id))
     plan = plan_result.scalar_one_or_none()
     
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if not plan.razorpay_plan_id:
-        raise HTTPException(status_code=400, detail="This plan cannot be purchased via Razorpay")
+    if plan.price_cents == 0:
+        raise HTTPException(status_code=400, detail="Free plan cannot be checked out")
 
-    # Fetch User's current sub
     sub_result = await db.execute(select(Subscription).where(Subscription.user_id == current_user.id))
     sub = sub_result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription record missing")
     
-    # We ideally create a customer if they don't have one, but for this demo, 
-    # we assume razorpay_customer_id is either there or we need to generate it
-    # We will just assume create_subscription doesn't explicitly need customer_id if we rely on checkout links,
-    # OR we use the service to create a customer.
-    from app.services.billing import create_customer
-    if not sub.razorpay_customer_id:
-        try:
-            customer_id = create_customer(current_user.full_name, current_user.email)
-            sub.razorpay_customer_id = customer_id
-            await db.commit()
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
+    order_id = f"order_{current_user.id}_{int(datetime.now(UTC).timestamp())}_{uuid.uuid4().hex[:4]}"
+    
     try:
-        rp_sub = create_subscription(sub.razorpay_customer_id, plan.razorpay_plan_id)
+        cf_order = create_cashfree_order(
+            order_id=order_id,
+            amount_cents=plan.price_cents,
+            customer_id=str(current_user.id),
+            customer_email=current_user.email
+        )
+        
+        # Track order state
+        sub.cashfree_order_id = order_id
+        # Also temporary map plan checkout interest
+        sub.plan_id = plan.id
+        await db.commit()
+        
         return CheckoutResponse(
-            subscription_id=rp_sub["id"],
-            key_id=settings.RAZORPAY_KEY_ID
+            payment_session_id=cf_order["payment_session_id"],
+            order_id=order_id,
+            cf_env=settings.CASHFREE_ENV
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create Razorpay subscription: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create Cashfree checkout order: {str(e)}")
+
+
+@router.post("/verify-order", response_model=SubscriptionOut)
+async def verify_order(order_id: str, current_user: CurrentUser, db: DBSession):
+    # Verify order status directly from Cashfree API
+    try:
+        cf_order = get_cashfree_order(order_id)
+        if cf_order.get("order_status") == "PAID":
+            # Find local subscription
+            result = await db.execute(select(Subscription).options(selectinload(Subscription.plan)).where(Subscription.cashfree_order_id == order_id))
+            sub = result.scalar_one_or_none()
+            if sub:
+                sub.status = "active"
+                sub.videos_used_this_period = 0
+                
+                # Check for existing billing history to prevent duplicates
+                existing_hist = await db.execute(select(BillingHistory).where(BillingHistory.cashfree_payment_id == order_id))
+                if not existing_hist.scalar_one_or_none():
+                    # Create billing history log
+                    amount_inr = cf_order.get("order_amount", 0)
+                    history = BillingHistory(
+                        subscription_id=sub.id,
+                        amount_cents=int(amount_inr * 100),
+                        status="paid",
+                        date=datetime.now(UTC),
+                        cashfree_payment_id=order_id
+                    )
+                    db.add(history)
+                    await db.commit()
+                    await db.refresh(sub)
+                return sub
+            raise HTTPException(status_code=404, detail="Subscription trace not found")
+        else:
+            raise HTTPException(status_code=400, detail=f"Order is not paid. Status: {cf_order.get('order_status')}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
 
 
 @router.get("/history", response_model=List[BillingHistoryOut])
@@ -95,68 +131,50 @@ async def get_billing_history(current_user: CurrentUser, db: DBSession):
 
 
 @router.post("/webhook")
-async def razorpay_webhook(
+async def cashfree_webhook(
     request: Request, 
     db: DBSession,
-    x_razorpay_signature: str = Header(None)
+    x_webhook_signature: str = Header(None),
+    x_webhook_timestamp: str = Header(None)
 ):
-    if not x_razorpay_signature:
-        raise HTTPException(status_code=400, detail="Missing signature")
+    if not x_webhook_signature or not x_webhook_timestamp:
+        raise HTTPException(status_code=400, detail="Missing webhook headers")
         
     payload_body = await request.body()
-    try:
-        is_valid = verify_webhook_signature(payload_body.decode('utf-8'), x_razorpay_signature)
-        if not is_valid:
-            raise HTTPException(status_code=400, detail="Invalid signature")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Signature verification failed")
-        
-    payload = json.loads(payload_body)
-    event = payload.get("event")
+    payload_str = payload_body.decode('utf-8')
     
-    if event in ["subscription.charged", "subscription.authenticated"]:
-        sub_entity = payload.get("payload", {}).get("subscription", {}).get("entity", {})
-        sub_id = sub_entity.get("id")
-        plan_id_str = sub_entity.get("plan_id")
+    is_valid = verify_cashfree_webhook_signature(payload_str, x_webhook_signature, x_webhook_timestamp)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid signature")
         
-        # Find local subscription by razorpay_subscription_id
-        result = await db.execute(select(Subscription).where(Subscription.razorpay_subscription_id == sub_id))
-        sub = result.scalar_one_or_none()
+    try:
+        payload = json.loads(payload_str)
+        data = payload.get("data", {})
+        order = data.get("order", {})
+        order_id = order.get("order_id")
+        payment = data.get("payment", {})
+        payment_status = payment.get("payment_status")
         
-        if not sub:
-            # Maybe it's a new subscription that we didn't track yet
-            pass
-        else:
-            sub.status = "active"
-            sub.videos_used_this_period = 0
-            # update expiry
-            current_end = sub_entity.get("current_end")
-            if current_end:
-                sub.current_period_end = datetime.fromtimestamp(current_end, UTC)
-            
-            # create billing history record
-            payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
-            amount = payment_entity.get("amount", 0)
-            payment_id = payment_entity.get("id")
-            
-            history = BillingHistory(
-                subscription_id=sub.id,
-                amount_cents=amount,
-                status="paid",
-                date=datetime.now(UTC),
-                razorpay_payment_id=payment_id
-            )
-            db.add(history)
-            await db.commit()
-            
-    elif event in ["subscription.cancelled", "subscription.halted"]:
-        sub_entity = payload.get("payload", {}).get("subscription", {}).get("entity", {})
-        sub_id = sub_entity.get("id")
+        if payment_status == "SUCCESS":
+            result = await db.execute(select(Subscription).where(Subscription.cashfree_order_id == order_id))
+            sub = result.scalar_one_or_none()
+            if sub:
+                sub.status = "active"
+                sub.videos_used_this_period = 0
+                
+                existing_hist = await db.execute(select(BillingHistory).where(BillingHistory.cashfree_payment_id == order_id))
+                if not existing_hist.scalar_one_or_none():
+                    amount = order.get("order_amount", 0)
+                    history = BillingHistory(
+                        subscription_id=sub.id,
+                        amount_cents=int(amount * 100),
+                        status="paid",
+                        date=datetime.now(UTC),
+                        cashfree_payment_id=order_id
+                    )
+                    db.add(history)
+                    await db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
         
-        result = await db.execute(select(Subscription).where(Subscription.razorpay_subscription_id == sub_id))
-        sub = result.scalar_one_or_none()
-        if sub:
-            sub.status = "canceled" if event == "subscription.cancelled" else "past_due"
-            await db.commit()
-            
     return {"status": "ok"}

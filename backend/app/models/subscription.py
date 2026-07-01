@@ -22,6 +22,10 @@ class Subscription(Base):
     razorpay_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
     razorpay_customer_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Cashfree tracking
+    cashfree_order_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
+    cashfree_customer_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
     user: Mapped["User"] = relationship(back_populates="subscription")
     plan: Mapped["Plan"] = relationship(back_populates="subscriptions")
     history: Mapped[list["BillingHistory"]] = relationship(back_populates="subscription", cascade="all, delete-orphan")

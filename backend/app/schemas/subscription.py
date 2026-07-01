@@ -12,6 +12,7 @@ class PlanOut(BaseModel):
     storage_gb: int
     price_cents: int
     razorpay_plan_id: Optional[str] = None
+    cashfree_plan_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -22,6 +23,7 @@ class BillingHistoryOut(BaseModel):
     date: datetime
     razorpay_payment_id: Optional[str] = None
     razorpay_invoice_id: Optional[str] = None
+    cashfree_payment_id: Optional[str] = None
     invoice_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -32,6 +34,7 @@ class SubscriptionOut(BaseModel):
     videos_used_this_period: int
     current_period_end: Optional[datetime] = None
     razorpay_subscription_id: Optional[str] = None
+    cashfree_order_id: Optional[str] = None
     plan: PlanOut
 
     model_config = {"from_attributes": True}
@@ -40,5 +43,6 @@ class CheckoutRequest(BaseModel):
     plan_id: int
 
 class CheckoutResponse(BaseModel):
-    subscription_id: str
-    key_id: str
+    payment_session_id: str
+    order_id: str
+    cf_env: str
