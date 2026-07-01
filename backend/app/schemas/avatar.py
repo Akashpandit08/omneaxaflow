@@ -15,8 +15,13 @@ class AvatarOut(BaseModel):
     category: Optional[str] = None
     is_premium: bool
     is_active: bool
+    owner_id: Optional[int] = None
+    is_custom: bool
 
     model_config = {"from_attributes": True}
+
+
+AvatarUploadOut = AvatarOut
 
 
 class AvatarListOut(BaseModel):

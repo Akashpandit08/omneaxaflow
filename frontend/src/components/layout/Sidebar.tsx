@@ -13,6 +13,7 @@ import {
   Sparkles,
   Video,
   Mic,
+  Code,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
     items: [
       { href: "/billing", icon: CreditCard, label: "Billing", badge: "Pro" },
       { href: "/profile", icon: User, label: "Profile" },
+      { href: "/settings/api", icon: Code, label: "Developer API" },
     ],
   },
 ];

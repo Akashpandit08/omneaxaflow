@@ -21,6 +21,9 @@ class Video(Base, TimestampMixin):
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[VideoStatus] = mapped_column(
         Enum(VideoStatus), default=VideoStatus.queued, nullable=False
@@ -37,6 +40,7 @@ class Video(Base, TimestampMixin):
 
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="videos")
+    workspace = relationship("Workspace", back_populates="videos")
 
     @property
     def project_title(self) -> Optional[str]:

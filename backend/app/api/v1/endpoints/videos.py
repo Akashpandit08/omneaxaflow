@@ -2,22 +2,30 @@
 Video render and export endpoints.
 """
 
-from fastapi import APIRouter, HTTPException, status, Query, Request
-from sqlalchemy import select, func
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.core.deps import CurrentUser, DBSession
+from app.core.deps import CurrentUser, CurrentUserAnyAuth, DBSession
+from app.main import limiter
 from app.models.project import Project, ProjectStatus
 from app.models.subscription import Subscription
 from app.models.video import Video, VideoStatus
-from app.schemas.video import RenderRequest, VideoDownloadOut, VideoOut, VideoStatusOut, VideoListOut
+from app.schemas.video import (
+    RenderRequest,
+    VideoDownloadOut,
+    VideoListOut,
+    VideoOut,
+    VideoStatusOut,
+)
 from app.services.storage import get_presigned_download_url
 from app.workers.video_tasks import render_video_task
 
 router = APIRouter()
 
 
-from typing import Optional
 @router.get("", response_model=VideoListOut)
 async def list_videos(
     current_user: CurrentUser,
@@ -27,17 +35,17 @@ async def list_videos(
     search: Optional[str] = Query(None, description="Search by project title or description"),
 ):
     query = select(Video).join(Project).where(Project.owner_id == current_user.id)
-    
+
     if search:
         search_term = f"%{search}%"
         query = query.where(
-            (Project.title.ilike(search_term)) | 
+            (Project.title.ilike(search_term)) |
             (Project.description.ilike(search_term))
         )
-    
+
     count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar_one()
-    
+
     offset = (page - 1) * page_size
     result = await db.execute(
         query.order_by(Video.created_at.desc())
@@ -46,7 +54,7 @@ async def list_videos(
         .limit(page_size)
     )
     items = result.scalars().all()
-    
+
     return VideoListOut(items=list(items), total=total, page=page, page_size=page_size)
 
 
@@ -63,10 +71,6 @@ async def _check_subscription_quota(user_id: int, db: DBSession):
             detail=f"Monthly video limit ({subscription.plan.monthly_video_limit}) reached. Upgrade your plan.",
         )
 
-from fastapi import APIRouter, HTTPException, status, Query, Request
-
-from app.main import limiter
-
 @router.post(
     "/render", 
     response_model=VideoOut, 
@@ -75,7 +79,7 @@ from app.main import limiter
     description="Validates a project script and dispatches a Celery task to the AI background worker to generate voices, animate avatars, and render the final MP4."
 )
 @limiter.limit("10/minute")
-async def render_video(request: Request, body: RenderRequest, current_user: CurrentUser, db: DBSession):
+async def render_video(request: Request, body: RenderRequest, current_user: CurrentUserAnyAuth, db: DBSession):
     # Fetch project and verify ownership
     proj_result = await db.execute(
         select(Project).where(
@@ -85,7 +89,11 @@ async def render_video(request: Request, body: RenderRequest, current_user: Curr
     project = proj_result.scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    if not project.script:
+    has_scenes = (
+        isinstance(project.scenes, list)
+        and any((scene.get("script") or scene.get("text") or "").strip() for scene in project.scenes if isinstance(scene, dict))
+    )
+    if not has_scenes and not project.script:
         raise HTTPException(status_code=400, detail="Project has no script to render")
 
     await _check_subscription_quota(current_user.id, db)
@@ -154,7 +162,7 @@ async def retry_video(request: Request, video_id: int, current_user: CurrentUser
     summary="Get video rendering status",
     description="Poll this endpoint to receive the current background worker progress percent and status of a specific video."
 )
-async def get_video_status(video_id: int, current_user: CurrentUser, db: DBSession):
+async def get_video_status(video_id: int, current_user: CurrentUserAnyAuth, db: DBSession):
     result = await db.execute(
         select(Video)
         .join(Project)
@@ -173,7 +181,7 @@ async def get_video_status(video_id: int, current_user: CurrentUser, db: DBSessi
 
 
 @router.get("/{video_id}/download", response_model=VideoDownloadOut)
-async def get_download_url(video_id: int, current_user: CurrentUser, db: DBSession):
+async def get_download_url(video_id: int, current_user: CurrentUserAnyAuth, db: DBSession):
     result = await db.execute(
         select(Video)
         .join(Project)

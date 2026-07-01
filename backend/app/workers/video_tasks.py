@@ -25,13 +25,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.models.avatar import Avatar
 from app.models.project import Project, ProjectStatus
 from app.models.subscription import Subscription
 from app.models.video import Video, VideoStatus
+from app.models.voice import Voice
 from app.services.avatar_animator import animate_avatar
+from app.services.email import send_video_failed_email, send_video_ready_email
 from app.services.storage import upload_file
 from app.services.tts import generate_tts_sync
-from app.services.video_renderer import render_video, upload_rendered_video
+from app.services.video_renderer import (
+    get_local_avatar_path,
+    render_scenes,
+    render_video,
+    upload_rendered_video,
+)
 from app.workers.celery_app import celery_app
 
 logger = get_task_logger(__name__)
@@ -112,12 +120,14 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
             .options(
                 selectinload(Project.avatar),
                 selectinload(Project.voice),
+                selectinload(Project.owner),
             )
         ).scalar_one_or_none()
 
         if not project:
             raise NonRetryableError(f"Project {project_id} not found")
-        if not project.script or not project.script.strip():
+        has_scenes = _has_renderable_scenes(project.scenes)
+        if not has_scenes and (not project.script or not project.script.strip()):
             raise NonRetryableError("Project has no script — cannot render")
 
         logger.info(
@@ -130,7 +140,7 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
             f"  Attempt {self.request.retries + 1}/{self.max_retries + 1}"
         )
         logger.info(
-            f"  Script length: {len(project.script)} chars"
+            f"  Script length: {len(project.script or '')} chars"
         )
         logger.info(
             f"  Avatar: {'#' + str(project.avatar.id) if project.avatar else 'none'}"
@@ -143,6 +153,63 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
         )
 
         _update_progress(db, video, 5, "Project validated")
+
+        if has_scenes:
+            scenes = _prepare_scenes(db, project.scenes)
+            _update_progress(db, video, 25, f"Rendering {len(scenes)} scenes")
+
+            def scene_progress(scene_index: int, scene_count: int) -> None:
+                percent = 25 + int(((scene_index - 1) / scene_count) * 60)
+                _update_progress(db, video, percent, f"Scene {scene_index}/{scene_count}")
+
+            video_output_path = render_scenes(
+                scenes,
+                project,
+                MEDIA_TMP,
+                MEDIA_TMP,
+                progress_callback=scene_progress,
+            )
+
+            duration_seconds = _get_duration(video_output_path)
+            video.duration_seconds = int(duration_seconds) if duration_seconds else None
+
+            logger.info(
+                f"  Multi-scene video rendered: {video_output_path} "
+                f"({duration_seconds:.1f}s)" if duration_seconds else f"  Multi-scene video rendered: {video_output_path}"
+            )
+            _update_progress(db, video, 85, "Video encoded")
+
+            _update_progress(db, video, 88, "Uploading final video to S3")
+            video_s3_key = upload_rendered_video(video_output_path)
+            video_output_path = None
+
+            video.video_s3_key = video_s3_key
+            _update_progress(db, video, 95, f"Video uploaded → {video_s3_key}")
+
+            video.status = VideoStatus.completed
+            video.error_message = None
+            project.status = ProjectStatus.completed
+
+            sub = db.execute(
+                select(Subscription).where(Subscription.user_id == project.owner_id)
+            ).scalar_one_or_none()
+            if sub:
+                sub.videos_used_this_period += 1
+
+            send_video_ready_email(project.owner.email, project.title)
+
+            _update_progress(db, video, 100, "Pipeline complete ✓")
+            db.commit()
+
+            logger.info(
+                f"[Task {self.request.id}] ✓ Multi-scene pipeline complete for video {video_id} → {video_s3_key}"
+            )
+            return {
+                "video_id": video_id,
+                "s3_key": video_s3_key,
+                "duration_seconds": video.duration_seconds,
+                "status": "completed",
+            }
 
         # ─────────────────────────────────────────────────────────────────
         # STAGE 2: Voice Generation — TTS (5–25%)
@@ -173,11 +240,7 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
         # ─────────────────────────────────────────────────────────────────
         # STAGE 3: Avatar Animation (25–50%)
         # ─────────────────────────────────────────────────────────────────
-        avatar_path = None
-        if project.avatar and project.avatar.thumbnail_url:
-            local_avatar = f"/app/media/avatars/{project.avatar.id}.jpg"
-            if os.path.exists(local_avatar):
-                avatar_path = local_avatar
+        avatar_path = get_local_avatar_path(project.avatar)
 
         if avatar_path:
             _update_progress(db, video, 30, "Animating avatar")
@@ -258,6 +321,20 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
         if sub:
             sub.videos_used_this_period += 1
 
+        send_video_ready_email(project.owner.email, project.title)
+
+        try:
+            from app.services.webhook_dispatcher import dispatch_webhook_event
+            payload = {
+                "project_id": project.id,
+                "video_id": video.id,
+                "title": project.title,
+                "status": "completed"
+            }
+            dispatch_webhook_event(db, project.owner_id, "video.completed", payload)
+        except Exception as e:
+            logger.error(f"Failed to dispatch video.completed webhook: {e}")
+
         _update_progress(db, video, 100, "Pipeline complete ✓")
         db.commit()
 
@@ -299,6 +376,39 @@ def render_video_task(self: Task, video_id: int, project_id: int) -> dict:
         db.close()
 
 
+def _has_renderable_scenes(scenes) -> bool:
+    if not isinstance(scenes, list):
+        return False
+    return any((scene.get("script") or scene.get("text") or "").strip() for scene in scenes if isinstance(scene, dict))
+
+
+def _prepare_scenes(db, scenes) -> list[dict]:
+    prepared = []
+    for scene in scenes or []:
+        if not isinstance(scene, dict):
+            continue
+        script = (scene.get("script") or scene.get("text") or "").strip()
+        if not script:
+            continue
+
+        item = dict(scene)
+        item["script"] = script
+
+        avatar_id = item.get("avatar_id")
+        if avatar_id:
+            item["_avatar"] = db.get(Avatar, avatar_id)
+
+        voice_id = item.get("voice_id")
+        if voice_id:
+            item["_voice"] = db.get(Voice, voice_id)
+
+        prepared.append(item)
+
+    if not prepared:
+        raise NonRetryableError("Project has no renderable scenes")
+    return prepared
+
+
 def _mark_failed(db, video_id: int, project_id: int, error_msg: str):
     """Mark video and project as failed in DB."""
     try:
@@ -306,9 +416,28 @@ def _mark_failed(db, video_id: int, project_id: int, error_msg: str):
         if video:
             video.status = VideoStatus.failed
             video.error_message = error_msg[:500]
-        project = db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
+        project = db.execute(
+            select(Project)
+            .where(Project.id == project_id)
+            .options(selectinload(Project.owner))
+        ).scalar_one_or_none()
         if project:
             project.status = ProjectStatus.failed
+            send_video_failed_email(project.owner.email, project.title, error_msg)
+
+            try:
+                from app.services.webhook_dispatcher import dispatch_webhook_event
+                payload = {
+                    "project_id": project.id,
+                    "video_id": video_id,
+                    "title": project.title,
+                    "status": "failed",
+                    "error": error_msg[:500]
+                }
+                dispatch_webhook_event(db, project.owner_id, "video.failed", payload)
+            except Exception as e:
+                logger.error(f"Failed to dispatch video.failed webhook: {e}")
+
         db.commit()
     except Exception as inner_exc:
         logger.error(f"Failed to update error status: {inner_exc}")

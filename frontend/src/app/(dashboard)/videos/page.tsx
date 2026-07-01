@@ -167,10 +167,14 @@ export default function VideosPage() {
             icon={<Film className="w-7 h-7" />}
             title="No videos yet"
             description="You haven't rendered any videos yet. Go to your projects to create one."
-            action={{
-              label: "Go to Projects",
-              onClick: () => { window.location.href = "/projects"; }
-            }}
+            action={
+              <Button
+                variant="primary"
+                onClick={() => { window.location.href = "/projects"; }}
+              >
+                Go to Projects
+              </Button>
+            }
           />
         </Card>
       ) : (

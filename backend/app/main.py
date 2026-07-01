@@ -8,7 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import engine
 from app.models import Base  # noqa: F401 — ensure all models are registered
@@ -107,6 +106,7 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
+from app.api.v1.router import api_router
 app.include_router(api_router, prefix="/api/v1")
 
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useState, useEffect } from 'react';
 import { useDebouncedCallback } from 'use-debounce';
@@ -25,6 +25,7 @@ export function ScriptEditor({ value, onChange, onAutoSave }: ScriptEditorProps)
   const [saveStatus, setSaveStatus] = useState<"Saved" | "Saving..." | "Error">("Saved");
   const [charCount, setCharCount] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasSelection, setHasSelection] = useState(false);
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -38,6 +39,9 @@ export function ScriptEditor({ value, onChange, onAutoSave }: ScriptEditorProps)
       setCharCount(editor.getText().length);
       onChange(editor.getHTML());
       debouncedSave();
+    },
+    onSelectionUpdate: ({ editor }) => {
+      setHasSelection(!editor.state.selection.empty);
     },
   });
 
@@ -209,8 +213,8 @@ export function ScriptEditor({ value, onChange, onAutoSave }: ScriptEditorProps)
         </div>
 
         <div className="flex-1 overflow-y-auto relative">
-          {editor && (
-            <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="flex bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl overflow-hidden items-center">
+          {hasSelection && (
+            <div className="sticky top-3 z-10 mx-auto flex w-fit bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl overflow-hidden items-center">
               <RefreshCcw size={14} className="text-gray-400 ml-3 mr-1" />
               <select 
                 className="bg-transparent text-sm px-2 py-2 text-gray-300 hover:bg-white/5 transition-colors focus:outline-none border-r border-white/10"
@@ -242,7 +246,7 @@ export function ScriptEditor({ value, onChange, onAutoSave }: ScriptEditorProps)
                 <option value="french" className="bg-[#1a1a1a]">French</option>
                 <option value="german" className="bg-[#1a1a1a]">German</option>
               </select>
-            </BubbleMenu>
+            </div>
           )}
           <EditorContent editor={editor} />
         </div>

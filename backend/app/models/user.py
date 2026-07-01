@@ -17,3 +17,5 @@ class User(Base):
 
     projects: Mapped[List["Project"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     subscription: Mapped[Optional["Subscription"]] = relationship(back_populates="user", uselist=False)
+    api_keys: Mapped[List["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    webhooks: Mapped[List["Webhook"]] = relationship(back_populates="user", cascade="all, delete-orphan")

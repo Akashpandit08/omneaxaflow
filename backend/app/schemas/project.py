@@ -11,6 +11,8 @@ class SceneItem(BaseModel):
     text: str
     duration: Optional[int] = 5  # seconds
     transition: Optional[str] = "fade"
+    avatar_id: Optional[int] = None
+    voice_id: Optional[int] = None
 
 
 class ProjectCreate(BaseModel):

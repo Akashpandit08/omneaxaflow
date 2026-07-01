@@ -1,6 +1,6 @@
-# AiVideo — AI Video Generation SaaS 
+# RenderFlow — AI Video Generation SaaS 
 
-A production-ready AI video generation platform built with Next.js 16, FastAPI, PostgreSQL, AWS S3, and FFmpeg.
+A production-ready AI video generation platform built with Next.js, FastAPI, PostgreSQL, Redis, Celery, and FFmpeg.
 
 ---
 
@@ -25,78 +25,68 @@ A production-ready AI video generation platform built with Next.js 16, FastAPI, 
 
 ## Features
 
-- **Authentication** — JWT-based register/login with refresh tokens
-- **Dashboard** — Video project management with status tracking
-- **Script Editor** — Rich text editor for video scripts with scene management
-- **Voice Generation** — TTS integration (ElevenLabs / AWS Polly)
-- **Avatar Selection** — Predefined avatar library with preview
-- **Video Rendering Pipeline** — Async Celery workers with FFmpeg
-- **Video Export** — S3-hosted download with signed URLs
-- **Subscription Support** — Stripe integration with Free/Pro/Enterprise tiers
+- **Authentication** — JWT-based register/login with refresh tokens.
+- **Dashboard** — Video project management with status tracking.
+- **Script Editor** — Rich text editor for video scripts with scene management.
+- **Voice Generation** — TTS integration (ElevenLabs / AWS Polly / gTTS fallback).
+- **Avatar Selection** — Predefined avatar library and custom user avatars.
+- **Video Rendering Pipeline** — Async Celery workers with FFmpeg.
+- **Video Export** — S3-hosted download with signed URLs.
+- **Subscription Support** — Razorpay billing integration with subscription tiers.
+- **Developer API** — Generate API keys for programmatic access.
+- **Webhooks** — Register webhooks to receive real-time rendering lifecycle events.
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-- Docker & Docker Compose
+- Python 3.10+
+- Node.js 18+
+- PostgreSQL
+- Redis
+- FFmpeg
 - AWS account (S3 bucket)
-- Stripe account (optional for billing)
-- ElevenLabs API key (optional, falls back to gTTS)
+- Razorpay account (for billing)
 
-### Option A: Using Docker (Recommended)
+### Setup & Run (Local Development)
 
 **1. Clone & Configure**
 ```bash
 git clone <repo>
 cd aivideo
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your local DB, Redis, and API credentials
 ```
 
-**2. Start Services**
+**2. Database & Backend API**
 ```bash
-docker-compose up --build
-```
-
-**3. Run Database Migrations**
-```bash
-docker-compose exec backend alembic upgrade head
-```
-
-**4. Seed Initial Data**
-```bash
-docker-compose exec backend python scripts/seed.py
-```
-
-### Option B: Manual Setup (No Docker)
-
-**Prerequisites:** Python 3.10+, Node.js 18+, PostgreSQL, Redis, and FFmpeg.
-
-**1. Database Setup**
-Ensure PostgreSQL and Redis are running locally. Create a database named `aivideo`. Update your `.env` in the `backend` folder to point to `localhost`.
-
-**2. Start Backend API**
-```powershell
 cd backend
 python -m venv venv
-.\venv\Scripts\activate
+# Windows: .\venv\Scripts\activate
+# Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
+
+# Run migrations
 alembic upgrade head
+
+# Seed initial data (optional)
 python scripts/seed.py
+
+# Start the FastAPI server
 uvicorn app.main:app --reload
 ```
 
-**3. Start Celery Worker (In a new terminal)**
-```powershell
+**3. Celery Worker (In a new terminal)**
+```bash
 cd backend
-.\venv\Scripts\activate
-# IMPORTANT for Windows users: you must use --pool=solo
+# Activate venv
+# Note: Windows users must use --pool=solo
 celery -A app.workers.celery_app worker --loglevel=info --pool=solo
 ```
 
-**4. Start Frontend Dashboard (In a new terminal)**
-```powershell
+**4. Frontend Dashboard (In a new terminal)**
+```bash
 cd frontend
 npm install
 npm run dev
@@ -109,114 +99,69 @@ npm run dev
 | Frontend   | http://localhost:3000      |
 | API        | http://localhost:8000      |
 | API Docs   | http://localhost:8000/docs |
-| Flower     | http://localhost:5555      |
 
 ---
 
 ## Environment Variables
 
-See `.env.example` for all required variables with descriptions.
-
----
-
-## Project Structure
-
-```
-aivideo/
-├── frontend/          # Next.js 16 app
-│   ├── src/
-│   │   ├── app/       # App Router pages
-│   │   ├── components/
-│   │   ├── lib/       # API client, utilities
-│   │   ├── store/     # Zustand stores
-│   │   └── types/
-│   └── ...
-├── backend/           # FastAPI application
-│   ├── app/
-│   │   ├── api/       # Route handlers
-│   │   ├── core/      # Config, security, deps
-│   │   ├── models/    # SQLAlchemy models
-│   │   ├── schemas/   # Pydantic schemas
-│   │   ├── services/  # Business logic
-│   │   └── workers/   # Celery tasks
-│   ├── alembic/       # DB migrations
-│   └── scripts/       # Seed & utilities
-├── docker-compose.yml
-└── .env.example
-```
+See `.env.example` in both `backend` and `frontend` directories for required variables with descriptions.
 
 ---
 
 ## API Design
 
-### Auth
+The API is fully documented via Swagger UI at `/docs`. Below is a high-level summary:
+
+### Auth & Users
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/auth/register` | Create account |
 | POST | `/api/v1/auth/login` | Get JWT tokens |
-| POST | `/api/v1/auth/refresh` | Refresh access token |
-| POST | `/api/v1/auth/logout` | Invalidate token |
 
-### Projects
+### Developer Tools (API Keys & Webhooks)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/projects` | List user projects |
-| POST | `/api/v1/projects` | Create project |
-| GET | `/api/v1/projects/{id}` | Get project detail |
-| PUT | `/api/v1/projects/{id}` | Update project |
-| DELETE | `/api/v1/projects/{id}` | Delete project |
+| GET/POST | `/api/v1/api-keys` | Manage API keys |
+| DELETE | `/api/v1/api-keys/{id}` | Revoke API key |
+| GET/POST | `/api/v1/webhooks` | Manage Webhooks |
+| PATCH/DEL | `/api/v1/webhooks/{id}` | Update/Delete Webhook |
 
-### Videos
+### Core Logic
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/videos/render` | Trigger render |
-| GET | `/api/v1/videos/{id}/status` | Poll status |
-| GET | `/api/v1/videos/{id}/download` | Signed download URL |
+| CRUD | `/api/v1/projects` | Manage video projects |
+| POST | `/api/v1/videos/render` | Trigger render task |
+| GET | `/api/v1/videos/{id}/status` | Poll render status |
+| GET | `/api/v1/avatars` | List system & custom avatars |
+| GET | `/api/v1/voices` | List TTS voices |
 
-### Avatars
+### Billing
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/avatars` | List avatars |
-
-### Voices
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/voices` | List available voices |
-| POST | `/api/v1/voices/preview` | Generate voice preview |
-
-### Subscriptions
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/subscriptions/plans` | List plans |
-| POST | `/api/v1/subscriptions/checkout` | Create Stripe session |
-| POST | `/api/v1/subscriptions/webhook` | Stripe webhook |
+| POST | `/api/v1/subscriptions/checkout` | Create Razorpay order |
 
 ---
 
 ## Development Roadmap
 
 ### Phase 1 — MVP  ✅
-- [x] Project scaffolding & Docker setup
+- [x] Project scaffolding & Architecture setup
 - [x] Auth (register, login, JWT)
 - [x] Dashboard UI
 - [x] Project CRUD
-- [x] Avatar library
-- [x] Script editor
-- [x] Basic FFmpeg pipeline (text-on-video)
+- [x] Basic FFmpeg pipeline
 - [x] S3 upload/download
-- [x] Subscription plans (Stripe)
+- [x] Subscription plans (Razorpay)
 
-### Phase 2 — Core Features
-- [ ] ElevenLabs voice synthesis integration
-- [ ] Lip-sync with Wav2Lip or SadTalker
-- [ ] Custom avatar upload
-- [ ] Multi-scene video support
-- [ ] Video preview player
-- [ ] Email notifications (SendGrid)
+### Phase 2 — Core Features ✅
+- [x] Voice synthesis integration
+- [x] Custom avatar support (DB & UI)
+- [x] Multi-scene video support
+- [x] Email notifications
 
-### Phase 3 — Scale
+### Phase 3 — Scale 🔄
+- [x] API access & webhooks for users
 - [ ] Team workspaces
-- [ ] API access & webhooks for users
 - [ ] CDN integration (CloudFront)
 - [ ] Advanced analytics
 - [ ] Custom branding / white-label
@@ -227,4 +172,3 @@ aivideo/
 ## License
 
 MIT
-;

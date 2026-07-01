@@ -3,20 +3,29 @@ Avatar endpoints — list (with search, category, gender, style filters + pagina
 and single-avatar fetch.
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, select
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import func, or_, select
+from starlette.concurrency import run_in_threadpool
 
 from app.core.deps import CurrentUser, DBSession
 from app.models.avatar import Avatar
 from app.schemas.avatar import AvatarListOut, AvatarOut
+from app.services.storage import upload_bytes
 
 router = APIRouter()
 
 
-from fastapi_cache.decorator import cache
+ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png"}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+AVATAR_MEDIA_DIR = Path("/app/media/avatars")
+UPLOAD_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+}
 
 @router.get("", response_model=AvatarListOut)
-@cache(expire=3600)
 async def list_avatars(
     current_user: CurrentUser,
     db: DBSession,
@@ -29,7 +38,10 @@ async def list_avatars(
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
 ):
-    query = select(Avatar).where(Avatar.is_active == True)  # noqa: E712
+    query = select(Avatar).where(
+        Avatar.is_active == True,  # noqa: E712
+        or_(Avatar.owner_id.is_(None), Avatar.owner_id == current_user.id),
+    )
 
     if search:
         query = query.where(Avatar.name.ilike(f"%{search}%"))
@@ -58,6 +70,57 @@ async def list_avatars(
     return AvatarListOut(items=list(items), total=total, page=page, page_size=page_size)
 
 
+@router.post("/upload", response_model=AvatarOut, status_code=status.HTTP_201_CREATED)
+async def upload_avatar(
+    current_user: CurrentUser,
+    db: DBSession,
+    file: UploadFile = File(...),
+    name: str = Form(...),
+):
+    if file.content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar image must be a JPEG or PNG file",
+        )
+
+    image_bytes = await file.read()
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar image must be 5MB or smaller",
+        )
+
+    cleaned_name = name.strip()
+    if not cleaned_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar name is required",
+        )
+
+    avatar = Avatar(
+        name=cleaned_name,
+        owner_id=current_user.id,
+        is_custom=True,
+        is_active=True,
+        is_premium=False,
+    )
+    db.add(avatar)
+    await db.flush()
+
+    extension = UPLOAD_EXTENSIONS[file.content_type]
+    s3_key = f"avatars/{avatar.id}{extension}"
+    local_path = AVATAR_MEDIA_DIR / f"{avatar.id}{extension}"
+    await run_in_threadpool(AVATAR_MEDIA_DIR.mkdir, parents=True, exist_ok=True)
+    await run_in_threadpool(local_path.write_bytes, image_bytes)
+
+    await run_in_threadpool(upload_bytes, image_bytes, s3_key, file.content_type)
+    avatar.thumbnail_url = s3_key
+
+    await db.commit()
+    await db.refresh(avatar)
+    return avatar
+
+
 @router.get("/{avatar_id}", response_model=AvatarOut)
 async def get_avatar(
     avatar_id: int,
@@ -65,7 +128,11 @@ async def get_avatar(
     db: DBSession,
 ):
     result = await db.execute(
-        select(Avatar).where(Avatar.id == avatar_id, Avatar.is_active == True)  # noqa: E712
+        select(Avatar).where(
+            Avatar.id == avatar_id,
+            Avatar.is_active == True,  # noqa: E712
+            or_(Avatar.owner_id.is_(None), Avatar.owner_id == current_user.id),
+        )
     )
     avatar = result.scalar_one_or_none()
     if not avatar:

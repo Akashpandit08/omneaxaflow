@@ -7,10 +7,22 @@ from typing import Any, Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+import secrets
 
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+API_KEY_LOOKUP_PREFIX_LENGTH = 12
+
+def generate_api_key() -> tuple[str, str, str]:
+    """Generates a new API key. Returns (full_key, key_prefix, key_hash)."""
+    raw_secret = secrets.token_urlsafe(24)
+    full_key = f"rf_live_{raw_secret}"
+    key_prefix = full_key[:API_KEY_LOOKUP_PREFIX_LENGTH]
+    key_hash = hash_password(full_key)
+    return full_key, key_prefix, key_hash
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 Application configuration — reads from environment variables via pydantic-settings.
 """
 
-from typing import List
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     SECRET_KEY: str = "change-me"
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    ALLOW_INSECURE_WEBHOOK_URLS: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://aivideo:aivideo_secret@db:5432/aivideo"
@@ -52,6 +53,10 @@ class Settings(BaseSettings):
     # ElevenLabs
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"
+
+    # SendGrid
+    SENDGRID_API_KEY: Optional[str] = None
+    SENDGRID_FROM_EMAIL: str = "noreply@renderflow.app"
 
     # Frontend
     NEXT_PUBLIC_API_URL: str = "http://localhost:8000"

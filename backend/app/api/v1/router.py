@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, avatars, dashboard, projects, subscriptions, videos, voices, ai
+from app.api.v1.endpoints import auth, avatars, dashboard, projects, subscriptions, videos, voices, ai, api_keys, webhooks
 
 api_router = APIRouter()
 
@@ -12,3 +12,5 @@ api_router.include_router(avatars.router, prefix="/avatars", tags=["Avatars"])
 api_router.include_router(voices.router, prefix="/voices", tags=["Voices"])
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
 api_router.include_router(ai.router, prefix="/ai", tags=["AI Integration"])
+api_router.include_router(api_keys.router, prefix="/api-keys", tags=["API Keys"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])

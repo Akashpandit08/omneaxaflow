@@ -174,3 +174,37 @@ export interface DashboardStatsResponse {
     failed: number;
   };
 }
+
+// ---------- API Keys ----------
+
+export interface ApiKey {
+  id: number;
+  key_prefix: string;
+  name: string;
+  is_active: boolean;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface ApiKeyCreateResponse extends ApiKey {
+  full_key: string;
+}
+
+// ---------- Webhooks ----------
+
+export interface Webhook {
+  id: number;
+  url: string;
+  event_types: string[];
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface WebhookCreateResponse extends Webhook {
+  secret: string;
+}
+
+export interface WebhookRotateSecretResponse extends Webhook {
+  secret: string;
+}

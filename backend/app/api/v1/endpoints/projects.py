@@ -5,7 +5,7 @@ Project CRUD endpoints.
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
-from app.core.deps import CurrentUser, DBSession
+from app.core.deps import CurrentUser, CurrentUserAnyAuth, DBSession
 from app.models.project import Project, ProjectStatus
 from app.schemas.project import ProjectCreate, ProjectListOut, ProjectOut, ProjectUpdate
 
@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.get("", response_model=ProjectListOut)
 async def list_projects(
-    current_user: CurrentUser,
+    current_user: CurrentUserAnyAuth,
     db: DBSession,
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
@@ -39,7 +39,7 @@ async def list_projects(
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
-async def create_project(body: ProjectCreate, current_user: CurrentUser, db: DBSession):
+async def create_project(body: ProjectCreate, current_user: CurrentUserAnyAuth, db: DBSession):
     project = Project(
         owner_id=current_user.id,
         title=body.title,
@@ -56,7 +56,7 @@ async def create_project(body: ProjectCreate, current_user: CurrentUser, db: DBS
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-async def get_project(project_id: int, current_user: CurrentUser, db: DBSession):
+async def get_project(project_id: int, current_user: CurrentUserAnyAuth, db: DBSession):
     result = await db.execute(
         select(Project).where(Project.id == project_id, Project.owner_id == current_user.id)
     )

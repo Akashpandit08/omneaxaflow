@@ -1,5 +1,5 @@
 import enum
-from typing import Any, List, Optional
+from typing import List, Optional, TypedDict
 
 from sqlalchemy import JSON, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,6 +14,16 @@ class ProjectStatus(str, enum.Enum):
     failed = "failed"
 
 
+class ProjectScene(TypedDict, total=False):
+    id: str
+    text: str
+    script: str
+    duration: int
+    transition: str
+    avatar_id: Optional[int]
+    voice_id: Optional[int]
+
+
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 
@@ -21,7 +31,7 @@ class Project(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     script: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    scenes: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
+    scenes: Mapped[Optional[List[ProjectScene]]] = mapped_column(JSON, nullable=True)
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus), default=ProjectStatus.draft, nullable=False
     )
@@ -29,6 +39,9 @@ class Project(Base, TimestampMixin):
     # FK stored as owner_id (the "owner" / creator)
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
     avatar_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("avatars.id", ondelete="SET NULL"), nullable=True
@@ -39,9 +52,9 @@ class Project(Base, TimestampMixin):
 
     # Relationships
     owner: Mapped["User"] = relationship(back_populates="projects")
+    workspace = relationship("Workspace", back_populates="projects")
     videos: Mapped[List["Video"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
     avatar: Mapped[Optional["Avatar"]] = relationship(lazy="joined")
     voice: Mapped[Optional["Voice"]] = relationship(lazy="joined")
-

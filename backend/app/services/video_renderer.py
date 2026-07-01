@@ -15,10 +15,12 @@ import subprocess
 import textwrap
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from app.core.config import settings
+from app.services.avatar_animator import animate_avatar
 from app.services.storage import upload_file
+from app.services.tts import generate_tts_sync
 
 
 MEDIA_DIR = Path("/app/media")
@@ -69,6 +71,110 @@ def render_video(
     return output_path
 
 
+def render_scenes(
+    scenes: list[dict],
+    project,
+    audio_dir,
+    video_dir,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> str:
+    """Render multiple scene clips and concatenate them into one MP4."""
+    os.makedirs(audio_dir, exist_ok=True)
+    os.makedirs(video_dir, exist_ok=True)
+
+    clip_paths = []
+    temp_paths = []
+    output_path = None
+    succeeded = False
+    scene_count = len(scenes)
+
+    try:
+        for index, scene in enumerate(scenes, start=1):
+            if progress_callback:
+                progress_callback(index, scene_count)
+
+            script = (scene.get("script") or scene.get("text") or "").strip()
+            if not script:
+                continue
+
+            voice = scene.get("_voice") or project.voice
+            voice_provider = voice.provider if voice else "gtts"
+            provider_voice_id = voice.provider_voice_id if voice else None
+            language = voice.language if voice else "en"
+
+            audio_bytes = generate_tts_sync(
+                text=script,
+                voice_provider=voice_provider,
+                provider_voice_id=provider_voice_id,
+                language=language,
+            )
+
+            audio_path = str(Path(audio_dir) / f"scene_{index}_{uuid.uuid4().hex[:8]}.mp3")
+            with open(audio_path, "wb") as f:
+                f.write(audio_bytes)
+            temp_paths.append(audio_path)
+
+            avatar = scene.get("_avatar") or project.avatar
+            avatar_animation_path = None
+            avatar_path = get_local_avatar_path(avatar)
+
+            if avatar_path:
+                anim_result = animate_avatar(
+                    avatar_image_path=avatar_path,
+                    audio_path=audio_path,
+                )
+                avatar_animation_path = anim_result.video_path
+                temp_paths.append(avatar_animation_path)
+
+            clip_path = str(Path(video_dir) / f"scene_{index}_{uuid.uuid4().hex[:8]}.mp4")
+            if avatar_animation_path and os.path.exists(avatar_animation_path):
+                _render_with_animated_avatar(
+                    script, audio_path, avatar_animation_path,
+                    clip_path, 1280, 720, 30,
+                )
+            elif avatar_path and os.path.exists(avatar_path):
+                _render_with_avatar(
+                    script, audio_path, avatar_path,
+                    clip_path, 1280, 720, 30,
+                )
+            else:
+                _render_text_only(script, audio_path, clip_path, 1280, 720, 30)
+
+            clip_paths.append(clip_path)
+            temp_paths.append(clip_path)
+
+        if not clip_paths:
+            raise ValueError("No renderable scenes found")
+
+        output_path = str(Path(video_dir) / f"scenes_{project.id}_{uuid.uuid4().hex[:8]}.mp4")
+        concat_list_path = str(Path(video_dir) / f"concat_{uuid.uuid4().hex[:8]}.txt")
+        with open(concat_list_path, "w", encoding="utf-8") as f:
+            for clip_path in clip_paths:
+                escaped = clip_path.replace("'", "'\\''")
+                f.write(f"file '{escaped}'\n")
+        temp_paths.append(concat_list_path)
+
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_list_path,
+            "-c", "copy",
+            output_path,
+        ]
+        _run_ffmpeg(cmd)
+        succeeded = True
+        return output_path
+    finally:
+        cleanup_paths = temp_paths if succeeded else [*temp_paths, output_path]
+        for path in cleanup_paths:
+            if path and os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+
 def _render_with_animated_avatar(
     script: str,
     audio_path: str,
@@ -113,6 +219,22 @@ def _render_with_animated_avatar(
         output_path,
     ]
     _run_ffmpeg(cmd)
+
+
+def get_local_avatar_path(avatar) -> Optional[str]:
+    """Return the locally cached avatar image path, if present."""
+    if not avatar or not avatar.thumbnail_url:
+        return None
+
+    suffix = Path(str(avatar.thumbnail_url)).suffix
+    candidate_suffixes = [suffix] if suffix else []
+    candidate_suffixes.extend(ext for ext in [".jpg", ".jpeg", ".png"] if ext not in candidate_suffixes)
+
+    for ext in candidate_suffixes:
+        local_avatar = AVATAR_DIR / f"{avatar.id}{ext}"
+        if local_avatar.exists():
+            return str(local_avatar)
+    return None
 
 
 def _render_with_avatar(

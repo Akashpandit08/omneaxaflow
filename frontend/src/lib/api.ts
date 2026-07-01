@@ -1,5 +1,13 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import type { 
+  Avatar, 
+  ApiKey, 
+  ApiKeyCreateResponse, 
+  Webhook, 
+  WebhookCreateResponse, 
+  WebhookRotateSecretResponse 
+} from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
@@ -65,4 +73,55 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+export async function uploadAvatar(file: File, name: string): Promise<Avatar> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', name);
+
+  const { data } = await api.post<Avatar>('/avatars/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+export async function createApiKey(name: string): Promise<ApiKeyCreateResponse> {
+  const { data } = await api.post<ApiKeyCreateResponse>('/api-keys', { name });
+  return data;
+}
+
+export async function listApiKeys(): Promise<ApiKey[]> {
+  const { data } = await api.get<ApiKey[]>('/api-keys');
+  return data;
+}
+
+export async function revokeApiKey(id: number): Promise<void> {
+  await api.delete(`/api-keys/${id}`);
+}
+
+// Webhooks
+export async function createWebhook(url: string, event_types: string[]): Promise<WebhookCreateResponse> {
+  const { data } = await api.post<WebhookCreateResponse>('/webhooks', { url, event_types });
+  return data;
+}
+
+export async function listWebhooks(): Promise<Webhook[]> {
+  const { data } = await api.get<Webhook[]>('/webhooks');
+  return data;
+}
+
+export async function updateWebhook(id: number, updates: Partial<Webhook>): Promise<Webhook> {
+  const { data } = await api.patch<Webhook>(`/webhooks/${id}`, updates);
+  return data;
+}
+
+export async function deleteWebhook(id: number): Promise<void> {
+  await api.delete(`/webhooks/${id}`);
+}
+
+export async function rotateWebhookSecret(id: number): Promise<WebhookRotateSecretResponse> {
+  const { data } = await api.post<WebhookRotateSecretResponse>(`/webhooks/${id}/rotate-secret`);
+  return data;
+}
+
 export { api };
