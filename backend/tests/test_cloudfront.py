@@ -1,4 +1,3 @@
-import pytest
 from app.services.storage import get_presigned_download_url
 from app.core.config import settings
 

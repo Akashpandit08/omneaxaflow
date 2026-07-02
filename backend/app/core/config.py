@@ -4,6 +4,7 @@ Application configuration — reads from environment variables via pydantic-sett
 
 from typing import List, Optional
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,8 +17,10 @@ class Settings(BaseSettings):
     )
 
     # General
+    APP_ENV: str = "development"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
+    ENABLE_MOCK_SERVICES: bool = False
     SECRET_KEY: str = "change-me"
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     ALLOW_INSECURE_WEBHOOK_URLS: bool = False
@@ -42,6 +45,8 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     S3_BUCKET_NAME: str = "aivideo-media"
     S3_PRESIGNED_URL_EXPIRY: int = 3600
+    STORAGE_PROVIDER: str = "s3"
+    LOCAL_STORAGE_PATH: str = "/app/media"
 
     # CloudFront CDN
     CLOUDFRONT_DOMAIN: Optional[str] = None
@@ -60,6 +65,22 @@ class Settings(BaseSettings):
     # ElevenLabs
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"
+    ENABLE_ELEVENLABS_TTS: bool = False
+
+    # Cartesia TTS / hosted voice cloning
+    CARTESIA_API_KEY: str = ""
+    CARTESIA_API_VERSION: str = "2024-11-13"
+    CARTESIA_MODEL_ID: str = "sonic-2"
+    CARTESIA_DEFAULT_VOICE_ID: str = ""
+    CARTESIA_DEFAULT_LANGUAGE: str = "en"
+
+    # Amazon Polly TTS
+    POLLY_DEFAULT_VOICE_ID: str = "Joanna"
+    POLLY_ENGINE: str = "neural"
+    
+    # XTTS Settings
+    XTTS_MODEL: str = "xtts_v2"
+    VOICE_DEFAULT_PROVIDER: str = "cartesia"
 
     # SendGrid
     SENDGRID_API_KEY: Optional[str] = None
@@ -77,5 +98,39 @@ class Settings(BaseSettings):
 
     # Avatar Animation (D-ID)
     DID_API_KEY: str = ""
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug_flag(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "debug", "development", "dev"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "release", "production", "prod"}:
+                return False
+        return value
+
+    @property
+    def is_production(self) -> bool:
+        return self.APP_ENV.lower() == "production" or self.ENVIRONMENT.lower() == "production"
+
+    def require_mock_enabled(self, feature: str) -> None:
+        if not self.ENABLE_MOCK_SERVICES:
+            raise RuntimeError(
+                f"{feature} mock behavior is disabled. Set ENABLE_MOCK_SERVICES=true only for development."
+            )
+
+    def require_s3_configured(self) -> None:
+        missing = [
+            name
+            for name, value in {
+                "AWS_ACCESS_KEY_ID": self.AWS_ACCESS_KEY_ID,
+                "AWS_SECRET_ACCESS_KEY": self.AWS_SECRET_ACCESS_KEY,
+                "S3_BUCKET_NAME": self.S3_BUCKET_NAME,
+            }.items()
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(f"S3 storage is not configured. Missing: {', '.join(missing)}")
 
 settings = Settings()

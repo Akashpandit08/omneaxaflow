@@ -1,7 +1,7 @@
 """Phase 5 Content Models
 
 Revision ID: phase5_content_001
-Revises: 
+Revises: 20260701_0001
 Create Date: 2026-07-01 10:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'phase5_content_001'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = '20260701_0001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

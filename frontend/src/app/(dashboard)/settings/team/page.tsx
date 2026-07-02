@@ -2,29 +2,56 @@
 
 import { useState } from 'react';
 import { UserGroupIcon, UserPlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-
-const MOCK_TEAM = [
-  { id: 1, name: 'Alice Smith', email: 'alice@example.com', role: 'owner' },
-  { id: 2, name: 'Bob Jones', email: 'bob@example.com', role: 'admin' },
-  { id: 3, name: 'Charlie Brown', email: 'charlie@example.com', role: 'viewer' },
-];
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useWorkspaceStore } from '@/store/workspaceStore';
+import api from '@/lib/api';
 
 export default function TeamSettingsPage() {
-  const [members, setMembers] = useState(MOCK_TEAM);
+  const { currentWorkspace } = useWorkspaceStore();
+  const queryClient = useQueryClient();
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('viewer');
+  const [isInviting, setIsInviting] = useState(false);
 
-  const handleInvite = (e: React.FormEvent) => {
+  const { data: members = [], isLoading } = useQuery({
+    queryKey: ['workspace-members', currentWorkspace?.id],
+    queryFn: async () => {
+      if (!currentWorkspace) return [];
+      const res = await api.get(`/workspaces/${currentWorkspace.id}/members`);
+      return res.data;
+    },
+    enabled: !!currentWorkspace,
+  });
+
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteEmail) return;
+    if (!inviteEmail || !currentWorkspace) return;
     
-    alert(`Invitation sent to ${inviteEmail} as ${inviteRole}`);
-    setInviteEmail('');
+    setIsInviting(true);
+    try {
+      await api.post(`/workspaces/${currentWorkspace.id}/invitations?email=${encodeURIComponent(inviteEmail)}&role=${encodeURIComponent(inviteRole)}`);
+      alert(`Invitation sent to ${inviteEmail} as ${inviteRole}`);
+      setInviteEmail('');
+      queryClient.invalidateQueries({ queryKey: ['workspace-members', currentWorkspace.id] });
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to send invitation');
+    } finally {
+      setIsInviting(false);
+    }
   };
 
-  const handleRemove = (id: number) => {
+  const handleRemove = async (id: number) => {
+    if (!currentWorkspace) return;
     if (confirm('Are you sure you want to remove this member?')) {
-      setMembers(members.filter(m => m.id !== id));
+      try {
+        await api.delete(`/workspaces/${currentWorkspace.id}/members/${id}`);
+        queryClient.invalidateQueries({ queryKey: ['workspace-members', currentWorkspace.id] });
+        alert('Member removed successfully');
+      } catch (err: any) {
+        console.error(err);
+        alert(err.response?.data?.detail || 'Failed to remove member');
+      }
     }
   };
 
@@ -67,9 +94,10 @@ export default function TeamSettingsPage() {
             </select>
             <button
               type="submit"
-              className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors font-medium whitespace-nowrap"
+              disabled={isInviting}
+              className="px-6 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors font-medium whitespace-nowrap disabled:opacity-50"
             >
-              Send Invite
+              {isInviting ? 'Sending...' : 'Send Invite'}
             </button>
           </form>
         </div>
@@ -87,32 +115,43 @@ export default function TeamSettingsPage() {
         </div>
 
         <div className="divide-y divide-slate-800/50">
-          {members.map((member) => (
-            <div key={member.id} className="p-4 flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
-                  {member.name.charAt(0)}
+          {isLoading ? (
+            <div className="p-4 text-center text-slate-400">Loading members...</div>
+          ) : members.length === 0 ? (
+            <div className="p-4 text-center text-slate-400">No members found.</div>
+          ) : (
+            members.map((member: any) => {
+              const email = member.user?.email || member.email || 'Unknown User';
+              const initial = email.charAt(0).toUpperCase();
+              return (
+                <div key={member.id} className="p-4 flex items-center justify-between group">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                      {initial}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-white">{member.user?.full_name || 'Member'}</h4>
+                      <p className="text-sm text-slate-400">{email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="px-3 py-1 bg-slate-800 text-slate-300 text-xs rounded-full uppercase tracking-wider font-semibold">
+                      {member.role}
+                    </span>
+                    {member.role !== 'owner' && (
+                      <button
+                        onClick={() => handleRemove(member.id)}
+                        className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                        title="Remove Member"
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-medium text-white">{member.name}</h4>
-                  <p className="text-sm text-slate-400">{member.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="px-3 py-1 bg-slate-800 text-slate-300 text-xs rounded-full uppercase tracking-wider font-semibold">
-                  {member.role}
-                </span>
-                {member.role !== 'owner' && (
-                  <button
-                    onClick={() => handleRemove(member.id)}
-                    className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
       </section>
     </div>

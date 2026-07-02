@@ -2,6 +2,8 @@
 Text-to-Speech service.
 Supports:
   - ElevenLabs (premium, high quality)
+  - Cartesia (hosted premium/free-trial)
+  - Amazon Polly (cheap stable hosted TTS)
   - gTTS (free fallback, Google TTS)
 
 Provides both async (for FastAPI) and sync (for Celery) interfaces.
@@ -14,6 +16,7 @@ import uuid
 from typing import Optional
 
 import httpx
+import boto3
 
 from app.core.config import settings
 from app.services.storage import upload_file
@@ -50,6 +53,50 @@ def gtts_tts_sync(text: str, language: str = "en") -> bytes:
     return buf.getvalue()
 
 
+def cartesia_tts_sync(text: str, voice_id: str, language: str = "en") -> bytes:
+    """Call Cartesia TTS synchronously and return MP3 bytes."""
+    if not settings.CARTESIA_API_KEY:
+        raise RuntimeError("Cartesia TTS is not configured. Missing CARTESIA_API_KEY.")
+
+    payload = {
+        "model_id": settings.CARTESIA_MODEL_ID,
+        "transcript": text,
+        "voice": {"mode": "id", "id": voice_id},
+        "language": language or settings.CARTESIA_DEFAULT_LANGUAGE,
+        "output_format": {
+            "container": "mp3",
+            "bit_rate": 128000,
+            "sample_rate": 44100,
+        },
+    }
+    headers = {
+        "X-API-Key": settings.CARTESIA_API_KEY,
+        "Cartesia-Version": settings.CARTESIA_API_VERSION,
+        "Content-Type": "application/json",
+    }
+    with httpx.Client(timeout=60) as client:
+        response = client.post("https://api.cartesia.ai/tts/bytes", json=payload, headers=headers)
+        response.raise_for_status()
+        return response.content
+
+
+def polly_tts_sync(text: str, voice_id: str, language: str = "en") -> bytes:
+    """Call Amazon Polly synchronously and return MP3 bytes."""
+    client = boto3.client(
+        "polly",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_REGION,
+    )
+    response = client.synthesize_speech(
+        Text=text,
+        OutputFormat="mp3",
+        VoiceId=voice_id or settings.POLLY_DEFAULT_VOICE_ID,
+        Engine=settings.POLLY_ENGINE,
+    )
+    return response["AudioStream"].read()
+
+
 def generate_tts_sync(
     text: str,
     voice_provider: str = "gtts",
@@ -60,8 +107,20 @@ def generate_tts_sync(
     Generate TTS audio bytes synchronously.
     Returns raw MP3 bytes — caller handles file write / S3 upload.
     """
-    if voice_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY and provider_voice_id:
+    provider = (voice_provider or "gtts").lower()
+    if (
+        settings.ENABLE_ELEVENLABS_TTS
+        and provider == "elevenlabs"
+        and settings.ELEVENLABS_API_KEY
+        and provider_voice_id
+    ):
         return elevenlabs_tts_sync(text, provider_voice_id)
+    if provider == "cartesia" and settings.CARTESIA_API_KEY:
+        voice_id = provider_voice_id or settings.CARTESIA_DEFAULT_VOICE_ID
+        if voice_id:
+            return cartesia_tts_sync(text, voice_id, language)
+    if provider == "polly" and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+        return polly_tts_sync(text, provider_voice_id or settings.POLLY_DEFAULT_VOICE_ID, language)
     return gtts_tts_sync(text, language)
 
 
@@ -96,6 +155,32 @@ async def _gtts_tts(text: str, language: str = "en") -> bytes:
     return buf.getvalue()
 
 
+async def _cartesia_tts(text: str, voice_id: str, language: str = "en") -> bytes:
+    if not settings.CARTESIA_API_KEY:
+        raise RuntimeError("Cartesia TTS is not configured. Missing CARTESIA_API_KEY.")
+
+    payload = {
+        "model_id": settings.CARTESIA_MODEL_ID,
+        "transcript": text,
+        "voice": {"mode": "id", "id": voice_id},
+        "language": language or settings.CARTESIA_DEFAULT_LANGUAGE,
+        "output_format": {
+            "container": "mp3",
+            "bit_rate": 128000,
+            "sample_rate": 44100,
+        },
+    }
+    headers = {
+        "X-API-Key": settings.CARTESIA_API_KEY,
+        "Cartesia-Version": settings.CARTESIA_API_VERSION,
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        response = await client.post("https://api.cartesia.ai/tts/bytes", json=payload, headers=headers)
+        response.raise_for_status()
+        return response.content
+
+
 async def generate_tts(
     text: str,
     voice_provider: str,
@@ -106,8 +191,18 @@ async def generate_tts(
     Generate TTS audio from text (async).
     Returns the S3 key of the uploaded audio file.
     """
-    if voice_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY and provider_voice_id:
+    provider = (voice_provider or "gtts").lower()
+    if (
+        settings.ENABLE_ELEVENLABS_TTS
+        and provider == "elevenlabs"
+        and settings.ELEVENLABS_API_KEY
+        and provider_voice_id
+    ):
         audio_bytes = await _elevenlabs_tts(text, provider_voice_id)
+    elif provider == "cartesia" and settings.CARTESIA_API_KEY and (provider_voice_id or settings.CARTESIA_DEFAULT_VOICE_ID):
+        audio_bytes = await _cartesia_tts(text, provider_voice_id or settings.CARTESIA_DEFAULT_VOICE_ID, language)
+    elif provider == "polly" and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+        audio_bytes = polly_tts_sync(text, provider_voice_id or settings.POLLY_DEFAULT_VOICE_ID, language)
     else:
         audio_bytes = await _gtts_tts(text, language)
 

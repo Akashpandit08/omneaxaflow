@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { GlobeAltIcon, PaintBrushIcon } from '@heroicons/react/24/outline';
+import { updateBrandingSettings } from '@/lib/api';
 
 export default function BrandingSettingsPage() {
   const [primaryColor, setPrimaryColor] = useState('#6366f1');
@@ -12,11 +13,14 @@ export default function BrandingSettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    // Mock save
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await updateBrandingSettings({ primaryColor, customDomain, removeWatermark });
       alert('Branding settings saved');
-    }, 1000);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to save branding settings');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

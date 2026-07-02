@@ -6,6 +6,7 @@ import { ImportProgress } from "@/components/import/ImportProgress";
 import { ImportPreview } from "@/components/import/ImportPreview";
 import { useImportStore } from "@/store/importStore";
 import { useRouter } from "next/navigation";
+import { processImportJob, uploadImportFile } from "@/lib/api";
 
 export default function ImportsPage() {
   const router = useRouter();
@@ -15,35 +16,15 @@ export default function ImportsPage() {
   const handleUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      // Mock API call to upload
-      const formData = new FormData();
-      formData.append("file", file);
-      
-      const res = await fetch("/api/v1/imports/upload", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: formData
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
+      const data = await uploadImportFile(file);
       addJob(data);
 
-      // Trigger process
-      const processRes = await fetch(`/api/v1/imports/${data.id}/process`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        }
-      });
-      const processData = await processRes.json();
+      const processData = await processImportJob(data.id);
       updateJob(processData.id, processData);
 
     } catch (err) {
       console.error(err);
-      alert("Failed to upload file");
+      alert(err instanceof Error ? err.message : "Failed to upload file");
     } finally {
       setIsUploading(false);
     }

@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import MagicMock
 from app.services.translation_service import TranslationService
 

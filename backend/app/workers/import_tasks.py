@@ -1,7 +1,6 @@
 import os
 import tempfile
 import urllib.request
-from typing import Any, Dict
 from sqlalchemy.orm import Session
 from celery.utils.log import get_task_logger
 

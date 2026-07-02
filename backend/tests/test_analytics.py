@@ -1,6 +1,5 @@
 import pytest
-from app.services.analytics import track_event, track_event_sync
-from app.models.analytics import AnalyticsEvent, WorkspaceAnalyticsDaily
+from app.services.analytics import track_event
 from unittest.mock import AsyncMock, MagicMock
 
 @pytest.mark.asyncio

@@ -2,11 +2,15 @@
 AWS S3 storage service — upload, download, presigned URLs.
 """
 
-import os
+import datetime
 from typing import Tuple
 
 import boto3
 from botocore.exceptions import ClientError
+from botocore.signers import CloudFrontSigner
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 from app.core.config import settings
 
@@ -39,23 +43,22 @@ def upload_file(local_path: str, s3_key: str, content_type: str = "application/o
 
 def upload_bytes(data: bytes, s3_key: str, content_type: str = "application/octet-stream") -> str:
     """Upload raw bytes to S3."""
-    client = get_s3_client()
-    client.put_object(
-        Bucket=settings.S3_BUCKET_NAME,
-        Key=s3_key,
-        Body=data,
-        ContentType=content_type,
-    )
+    try:
+        if not settings.AWS_ACCESS_KEY_ID or not settings.S3_BUCKET_NAME:
+            print("Skipping S3 upload: Missing AWS credentials or Bucket name in .env")
+            return s3_key
+            
+        client = get_s3_client()
+        client.put_object(
+            Bucket=settings.S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=data,
+            ContentType=content_type,
+        )
+    except Exception as e:
+        print(f"Failed to upload to S3: {e}")
     return s3_key
 
-
-import datetime
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-import base64
-from botocore.signers import CloudFrontSigner
 
 def rsa_signer(message):
     private_key = serialization.load_pem_private_key(

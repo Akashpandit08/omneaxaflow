@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   User, Lock, Sparkles, Check, Search, X,
-  Play, Pause, Eye, ChevronRight, Star, Filter,
+  Play, Pause, Eye, ChevronRight, Star, Filter, Plus, Upload, Loader2,
 } from "lucide-react";
-import api from "@/lib/api";
+import api, { resolveMediaUrl } from "@/lib/api";
 import type { AvatarListResponse, Avatar } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -133,11 +133,13 @@ function AvatarVisual({
     md: "w-20 h-20 text-3xl",
     lg: "w-28 h-28 text-5xl",
   };
-  if (avatar.thumbnail_url) {
+  const thumbnailUrl = resolveMediaUrl(avatar.thumbnail_url);
+
+  if (thumbnailUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={avatar.thumbnail_url}
+        src={thumbnailUrl}
         alt={avatar.name}
         className="w-full h-full object-cover"
       />
@@ -187,6 +189,7 @@ function AvatarCard({
       }
     }
   };
+  const previewVideoUrl = resolveMediaUrl(avatar.preview_video_url);
 
   return (
     <div
@@ -217,12 +220,12 @@ function AvatarCard({
 
       {/* Visual area */}
       <div className="relative w-full aspect-[3/4] bg-gradient-to-br from-surface-elevated to-surface-border overflow-hidden flex items-center justify-center">
-        {avatar.preview_video_url ? (
+        {previewVideoUrl ? (
           <>
             {/* Video (plays on hover) */}
             <video
               ref={videoRef}
-              src={avatar.preview_video_url}
+              src={previewVideoUrl}
               loop
               muted
               playsInline
@@ -338,6 +341,9 @@ function AvatarPreviewModal({
   onClose: () => void;
   onSelect: (a: Avatar) => void;
 }) {
+  const thumbnailUrl = resolveMediaUrl(avatar?.thumbnail_url);
+  const previewVideoUrl = resolveMediaUrl(avatar?.preview_video_url);
+
   return (
     <Modal
       open={!!avatar}
@@ -375,12 +381,12 @@ function AvatarPreviewModal({
         <div className="flex flex-col gap-5">
           {/* Visual */}
           <div className="w-full aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-surface-elevated to-surface-border flex items-center justify-center relative">
-            {avatar.preview_video_url ? (
-              <AvatarVideoPreview url={avatar.preview_video_url} name={avatar.name} />
-            ) : avatar.thumbnail_url ? (
+            {previewVideoUrl ? (
+              <AvatarVideoPreview url={previewVideoUrl} name={avatar.name} />
+            ) : thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={avatar.thumbnail_url}
+                src={thumbnailUrl}
                 alt={avatar.name}
                 className="w-full h-full object-cover"
               />
@@ -443,6 +449,11 @@ export default function AvatarsPage() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [previewAvatar, setPreviewAvatar] = useState<Avatar | null>(null);
   const [proModal, setProModal] = useState<Avatar | null>(null);
+  const [createModal, setCreateModal] = useState(false);
+  const [uploadName, setUploadName] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["avatars", search, category, genderFilter, styleFilter],
@@ -472,6 +483,28 @@ export default function AvatarsPage() {
 
   const clearSearch = () => setSearch("");
 
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile || !uploadName) return;
+    
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("name", uploadName);
+      formData.append("file", uploadFile);
+      await api.post("/avatars/upload", formData);
+      setCreateModal(false);
+      setUploadName("");
+      setUploadFile(null);
+      queryClient.invalidateQueries({ queryKey: ["avatars"] });
+    } catch (err) {
+      console.error("Upload failed", err);
+      alert("Failed to upload avatar. Ensure it is a valid format and size.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const activeCount = data?.total ?? 0;
   const hasResults = (data?.items.length ?? 0) > 0;
 
@@ -495,6 +528,14 @@ export default function AvatarsPage() {
             <Sparkles className="w-3 h-3" />
             {activeCount} available
           </Badge>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setCreateModal(true)}
+          >
+            Create Avatar
+          </Button>
         </div>
       </div>
 
@@ -694,6 +735,85 @@ export default function AvatarsPage() {
             </div>
           </div>
         )}
+      </Modal>
+      {/* ── Create Avatar Modal ── */}
+      <Modal
+        open={createModal}
+        onClose={() => !isUploading && setCreateModal(false)}
+        title="Create Custom Avatar"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setCreateModal(false)}
+              disabled={isUploading}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleUpload}
+              disabled={isUploading || !uploadFile || !uploadName}
+              leftIcon={isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            >
+              {isUploading ? "Uploading..." : "Upload Avatar"}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleUpload} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-300">Avatar Name</label>
+            <input
+              type="text"
+              value={uploadName}
+              onChange={(e) => setUploadName(e.target.value)}
+              placeholder="e.g. My Custom Avatar"
+              className="input w-full"
+              maxLength={50}
+              required
+              disabled={isUploading}
+            />
+          </div>
+          
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-slate-300">Avatar Image</label>
+            <div className="relative">
+              <input
+                type="file"
+                accept="image/png, image/jpeg"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                className="hidden"
+                id="avatar-upload"
+                disabled={isUploading}
+              />
+              <label
+                htmlFor="avatar-upload"
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-colors",
+                  uploadFile ? "border-brand-500 bg-brand-500/10" : "border-surface-border bg-surface-card hover:bg-surface-elevated hover:border-slate-500",
+                  isUploading && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {uploadFile ? (
+                  <div className="flex flex-col items-center gap-2 text-brand-400">
+                    <Check className="w-6 h-6" />
+                    <span className="text-sm font-medium">{uploadFile.name}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <Upload className="w-6 h-6" />
+                    <span className="text-sm font-medium">Click to upload image</span>
+                    <span className="text-xs text-slate-500">JPG or PNG (max. 5MB)</span>
+                  </div>
+                )}
+              </label>
+            </div>
+          </div>
+        </form>
       </Modal>
     </div>
   );

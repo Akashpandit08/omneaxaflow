@@ -1,8 +1,7 @@
 import hmac
 import hashlib
-import json
 import httpx
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from app.core.config import settings
 

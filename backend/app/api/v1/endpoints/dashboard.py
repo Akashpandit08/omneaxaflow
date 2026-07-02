@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.deps import CurrentUser, DBSession
 from app.models.project import Project
-from app.models.video import Video, VideoStatus
+from app.models.video import Video
 from app.models.subscription import Subscription
 from app.schemas.dashboard import DashboardStatsOut, VideoStatusCounts
 

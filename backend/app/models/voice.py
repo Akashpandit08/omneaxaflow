@@ -11,7 +11,7 @@ class Voice(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    provider: Mapped[str] = mapped_column(String(50), nullable=False)  # elevenlabs | gtts
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)  # gtts | cartesia | polly | elevenlabs
     provider_voice_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     language: Mapped[str] = mapped_column(String(10), default="en", nullable=False)
     accent: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

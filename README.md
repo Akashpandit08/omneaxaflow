@@ -69,7 +69,8 @@ OmneaxaFlow is designed with a decoupled architecture to ensure horizontal scali
                                                ▼           ▼
                                             ┌────┐   ┌─────────────┐
                                             │ S3 │   │ External AI │
-                                            │    │   │ ElevenLabs  │
+                                            │    │   │ gTTS        │
+                                            │    │   │ Cartesia    │
                                             │    │   │ AWS Polly   │
                                             └────┘   └─────────────┘
 ```
@@ -100,9 +101,9 @@ OmneaxaFlow is designed with a decoupled architecture to ensure horizontal scali
 - **Interactive Multi-Scene Timeline** — Manage multiple transitions, subtitles, aspect ratios, and visual elements concurrently.
 
 ### 🤖 AI Features
-- **Few-Shot Voice Cloning** — Clone corporate narrators or executives using ElevenLabs custom trainer with AWS Polly voice fallback logic.
+- **Hosted Voice Cloning** — Clone approved voice samples through Cartesia so low-end local machines do not need to run heavy XTTS/OpenVoice models.
 - **Enterprise Dubbing & Translation** — Translate, adapt, and render scripts into over 175+ languages while maintaining synchronized audio timestamps.
-- **Dynamic Text-to-Speech** — Integration of multiple high-fidelity TTS systems (ElevenLabs, Polly, gTTS).
+- **Dynamic Text-to-Speech** — Provider stack with free gTTS fallback, Cartesia hosted voices, and Amazon Polly stable low-cost voices. ElevenLabs remains disabled by default and opt-in only.
 
 ### 🎓 Learning & LMS
 - **Interactive Checkpoint Quizzes** — Embed multiple-choice questionnaire checkpoints into videos at designated timestamps to pause playback and test learners.
@@ -143,7 +144,11 @@ The easiest way to spin up the entire cluster (Frontend, Backend, Postgres, Redi
    ```
 2. Run the environment services:
    ```bash
-   docker-compose up --build
+   docker compose up --build
+   ```
+3. Seed system voices after the backend is running:
+   ```bash
+   docker compose exec backend python scripts/seed_voices.py
    ```
 
 ---
@@ -207,11 +212,56 @@ OmneaxaFlow requires the following key variables to run. Add them to your enviro
 | `AWS_SECRET_ACCESS_KEY` | Secret access key for AWS S3 |
 | `S3_BUCKET` | AWS S3 bucket name designated for storing avatars, raw media, and rendered files |
 | `JWT_SECRET` | Secret key used to encrypt and sign JWT credentials |
-| `ELEVENLABS_API_KEY` | ElevenLabs developer key for Custom Voice Cloning and high-fidelity TTS |
+| `VOICE_DEFAULT_PROVIDER` | Default provider for voice cloning requests. Current default: `cartesia` |
+| `CARTESIA_API_KEY` | Cartesia API key for hosted TTS and voice cloning. Leave blank to keep only free gTTS/basic voices |
+| `CARTESIA_MODEL_ID` | Cartesia TTS model ID. Current default: `sonic-2` |
+| `CARTESIA_DEFAULT_VOICE_ID` | Optional Cartesia voice ID used for system voice previews when no custom clone is selected |
+| `POLLY_DEFAULT_VOICE_ID` | Amazon Polly voice used by default. Current default: `Joanna` |
+| `POLLY_ENGINE` | Amazon Polly engine. Current default: `neural` |
+| `ELEVENLABS_API_KEY` | Optional legacy ElevenLabs key. Not used unless `ENABLE_ELEVENLABS_TTS=true` |
+| `ENABLE_ELEVENLABS_TTS` | Enables ElevenLabs TTS/clone paths. Current default: `false` |
 | `GEMINI_API_KEY` | **Primary** Google Gemini API key for AI script generation and content processing |
 | `OPENAI_API_KEY` | *(Optional)* OpenAI API key — only needed if switching `PRIMARY_PROVIDER` to `openai` |
 | `RAZORPAY_KEY` | Razorpay payment gateway key |
 | `RAZORPAY_SECRET` | Razorpay integration secret |
+
+---
+
+## Voice Provider Stack
+
+The current voice stack is designed for machines without strong local GPU/CPU resources:
+
+| Provider | Purpose | Cost Profile | Notes |
+|---|---|---|---|
+| `gtts` | Free basic TTS fallback | Free/basic | Always available for simple system voices. No custom voice cloning. |
+| `cartesia` | Hosted TTS and voice cloning | Free trial / hosted paid API | Default cloning provider. Requires `CARTESIA_API_KEY`. Heavy model work runs on Cartesia, not your local machine. |
+| `polly` | Stable production TTS | AWS free tier / low cost | Good for reliable system voices. Does not support custom voice cloning. |
+| `xtts` | Local voice cloning | Free but heavy | Kept in the codebase, but not recommended on low-end systems. |
+| `elevenlabs` | Legacy premium provider | Paid/opt-in | Disabled by default. Enable only with `ENABLE_ELEVENLABS_TTS=true`. |
+
+Seed the default system voices with:
+
+```bash
+docker compose exec backend python scripts/seed_voices.py
+```
+
+The seed creates:
+
+- `Free English (gTTS)`
+- `Free French (gTTS)`
+- `Free Spanish (gTTS)`
+- `Cartesia Default`
+- `Polly Joanna`
+- `Polly Matthew`
+
+Cartesia cloning requires:
+
+```env
+CARTESIA_API_KEY=your_cartesia_key
+VOICE_DEFAULT_PROVIDER=cartesia
+```
+
+Without a Cartesia key, free gTTS system voices still work.
 
 ---
 
@@ -236,7 +286,7 @@ OmneaxaFlow provides auto-generated documentation via Swagger UI. Once running t
 ### Voice Cloning & TTS
 | Method | Route | Description |
 |---|---|---|
-| `POST` | `/api/v1/voices/clone` | Request voice training from audio sample |
+| `POST` | `/api/v1/voices/clone` | Request hosted Cartesia voice cloning from an uploaded audio sample |
 | `GET` | `/api/v1/voices/clones` | Fetch list of custom cloned voices |
 | `POST` | `/api/v1/voices/clones/{id}/preview` | Generate preview script using voice |
 

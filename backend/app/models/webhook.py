@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import List
 
 from sqlalchemy import ForeignKey, String, JSON, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship

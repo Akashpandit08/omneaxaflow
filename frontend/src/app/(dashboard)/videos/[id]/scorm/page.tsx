@@ -1,41 +1,36 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { useScormStore } from "@/store/scormStore";
 import { SCORMPackageCard } from "@/components/scorm/SCORMPackageCard";
 import { SCORMExportModal } from "@/components/scorm/SCORMExportModal";
 import { Button } from "@/components/ui/Button";
+import api from "@/lib/api";
 
 export default function SCORMPage() {
+  const params = useParams();
+  const videoId = parseInt(params.id as string, 10);
   const { packages, setPackages, addPackage, removePackage } = useScormStore();
-  const [videoId, setVideoId] = useState(1); // Hardcoded for dashboard view
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const videoPackages = packages[videoId] || [];
 
   useEffect(() => {
-    // In a real app, we might want a global endpoint to fetch all scorm packages, 
-    // but the backend only has /api/v1/scorm/{id} (single) and POST to create. 
-    // Wait, the prompt says endpoints are POST /api/v1/videos/{id}/scorm, GET /api/v1/scorm/{id}. 
-    // We didn't define a list endpoint. I'll mock the fetch for now to prevent errors or just show empty.
+    if (!videoId) return;
+    
+    // Using a mock fetch if no endpoint exists for listing all SCORM packages for a video
+    // In our backend, there's no endpoint for `GET /api/v1/videos/{id}/scorm` yet, 
+    // only POST for export and GET for a single package.
+    // For now we assume one doesn't exist or we leave it empty until implemented
   }, [videoId, setPackages]);
 
   const handleExport = async (version: string) => {
     try {
-      const res = await fetch(`/api/v1/videos/${videoId}/scorm`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({
-          package_version: version
-        })
+      const res = await api.post(`/videos/${videoId}/scorm`, {
+        package_version: version
       });
-      if (res.ok) {
-        const data = await res.json();
-        addPackage(videoId, data);
-      }
+      addPackage(videoId, res.data);
     } catch (err) {
       console.error(err);
     }
@@ -43,13 +38,8 @@ export default function SCORMPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/scorm/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        removePackage(videoId, id);
-      }
+      await api.delete(`/scorm/${id}`);
+      removePackage(videoId, id);
     } catch (err) {
       console.error(err);
     }
@@ -57,14 +47,9 @@ export default function SCORMPage() {
 
   const handleDownload = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/scorm/${id}/download`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.download_url) {
-          window.open(data.download_url, "_blank");
-        }
+      const res = await api.get(`/scorm/${id}/download`);
+      if (res.data && res.data.download_url) {
+        window.open(res.data.download_url, "_blank");
       } else {
         alert("Package not ready for download.");
       }
@@ -74,7 +59,7 @@ export default function SCORMPage() {
   };
 
   return (
-    <div className="container max-w-4xl py-8 space-y-8">
+    <div className="container max-w-4xl py-8 space-y-8 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">SCORM Export</h1>
@@ -86,7 +71,7 @@ export default function SCORMPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {videoPackages.map(pkg => (
+        {videoPackages.map((pkg: any) => (
           <SCORMPackageCard 
             key={pkg.id} 
             pkg={pkg}
@@ -97,7 +82,7 @@ export default function SCORMPage() {
       </div>
 
       {videoPackages.length === 0 && (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg text-muted-foreground">
+        <div className="text-center py-12 border-2 border-dashed border-surface-border rounded-lg text-slate-400">
           No SCORM packages generated yet. Click 'Export New' to generate one.
         </div>
       )}

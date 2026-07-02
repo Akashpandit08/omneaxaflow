@@ -127,6 +127,21 @@ export interface VoiceListResponse {
   total: number;
 }
 
+export interface VoiceClone {
+  id: number;
+  workspace_id: number;
+  user_id: number;
+  name: string;
+  provider: string;
+  provider_voice_id: string | null;
+  status: "uploaded" | "training" | "ready" | "failed";
+  sample_audio_url: string | null;
+  preview_url: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ---------- Subscriptions ----------
 
 export type PlanTier = "free" | "pro" | "business";

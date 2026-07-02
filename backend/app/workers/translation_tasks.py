@@ -1,4 +1,3 @@
-import logging
 from sqlalchemy.orm import Session
 from celery.utils.log import get_task_logger
 

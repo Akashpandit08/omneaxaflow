@@ -1,9 +1,10 @@
 from datetime import datetime, UTC
 import json
 import uuid
-from typing import List, Optional
+from typing import List
 
-from fastapi import APIRouter, HTTPException, Request, Header, status
+from fastapi import APIRouter, HTTPException, Request, Header
+from fastapi_cache.decorator import cache
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -16,8 +17,6 @@ from app.schemas.subscription import SubscriptionOut, PlanOut, BillingHistoryOut
 from app.services.billing import create_cashfree_order, get_cashfree_order, verify_cashfree_webhook_signature
 
 router = APIRouter()
-
-from fastapi_cache.decorator import cache
 
 @router.get("/plans", response_model=List[PlanOut])
 @cache(expire=86400) # Cache plans for 24 hours

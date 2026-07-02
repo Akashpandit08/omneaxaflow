@@ -6,9 +6,10 @@ interface VoiceCloneCardProps {
   clone: VoiceClone;
   onDelete: (id: number) => void;
   onPreview: (id: number) => void;
+  onRetrain?: (id: number) => void;
 }
 
-export function VoiceCloneCard({ clone, onDelete, onPreview }: VoiceCloneCardProps) {
+export function VoiceCloneCard({ clone, onDelete, onPreview, onRetrain }: VoiceCloneCardProps) {
   const getStatusColor = () => {
     switch (clone.status) {
       case "ready": return "text-green-500 bg-green-50";
@@ -40,14 +41,24 @@ export function VoiceCloneCard({ clone, onDelete, onPreview }: VoiceCloneCardPro
       )}
 
       <div className="flex justify-between items-center pt-2">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          disabled={clone.status !== "ready"}
-          onClick={() => onPreview(clone.id)}
-        >
-          Preview Voice
-        </Button>
+        {clone.status === "failed" && onRetrain ? (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => onRetrain(clone.id)}
+          >
+            Retrain Voice
+          </Button>
+        ) : (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            disabled={clone.status !== "ready"}
+            onClick={() => onPreview(clone.id)}
+          >
+            Preview Voice
+          </Button>
+        )}
         <Button 
           variant="ghost" 
           size="sm" 

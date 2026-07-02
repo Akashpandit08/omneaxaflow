@@ -1,17 +1,11 @@
 import pytest
-from httpx import AsyncClient
-from fastapi import FastAPI
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
-import asyncio
 
 # Testing workspaces endpoints
 # Note: E2E tests are preferred in this case. Let's write some mock dependencies or unit tests.
 
 # For now, let's test `RequireRole` logic in deps.py to ensure isolation.
 from app.core.deps import RequireRole
-from fastapi import Request, HTTPException
+from fastapi import HTTPException
 
 @pytest.mark.asyncio
 async def test_require_role():

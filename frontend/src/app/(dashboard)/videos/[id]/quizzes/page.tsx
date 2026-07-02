@@ -1,45 +1,37 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { useQuizStore } from "@/store/quizStore";
 import { QuizEditor } from "@/components/quiz/QuizEditor";
 import { QuestionModal } from "@/components/quiz/QuestionModal";
 import { Button } from "@/components/ui/Button";
+import api from "@/lib/api";
 
 export default function QuizzesPage() {
+  const params = useParams();
+  const videoId = parseInt(params.id as string, 10);
   const { quizzes, setQuizzes, addQuiz, removeQuiz, updateQuiz } = useQuizStore();
-  const [videoId, setVideoId] = useState(1); // Hardcoded for demo/dashboard
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState(false);
   const [selectedQuizId, setSelectedQuizId] = useState<number | null>(null);
   
   const videoQuizzes = quizzes[videoId] || [];
 
   useEffect(() => {
-    fetch(`/api/v1/videos/${videoId}/quizzes`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-    })
-      .then(res => res.json())
-      .then(data => setQuizzes(videoId, data))
+    if (!videoId) return;
+    
+    api.get(`/videos/${videoId}/quizzes`)
+      .then(res => setQuizzes(videoId, res.data))
       .catch(console.error);
   }, [videoId, setQuizzes]);
 
   const handleCreateQuiz = async () => {
     try {
-      const res = await fetch(`/api/v1/videos/${videoId}/quizzes`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({
-          title: "New Interactive Quiz",
-          questions: []
-        })
+      const res = await api.post(`/videos/${videoId}/quizzes`, {
+        title: "New Interactive Quiz",
+        questions: []
       });
-      if (res.ok) {
-        const data = await res.json();
-        addQuiz(videoId, data);
-      }
+      addQuiz(videoId, res.data);
     } catch (err) {
       console.error(err);
     }
@@ -47,13 +39,8 @@ export default function QuizzesPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/quizzes/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        removeQuiz(videoId, id);
-      }
+      await api.delete(`/quizzes/${id}`);
+      removeQuiz(videoId, id);
     } catch (err) {
       console.error(err);
     }
@@ -67,28 +54,18 @@ export default function QuizzesPage() {
     const newQuestions = [...quiz.questions, questionData];
     
     try {
-      const res = await fetch(`/api/v1/quizzes/${selectedQuizId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({
-          title: quiz.title,
-          questions: newQuestions
-        })
+      const res = await api.put(`/quizzes/${selectedQuizId}`, {
+        title: quiz.title,
+        questions: newQuestions
       });
-      if (res.ok) {
-        const data = await res.json();
-        updateQuiz(videoId, selectedQuizId, data);
-      }
+      updateQuiz(videoId, selectedQuizId, res.data);
     } catch (err) {
       console.error(err);
     }
   };
 
   return (
-    <div className="container max-w-4xl py-8 space-y-8">
+    <div className="container max-w-4xl py-8 space-y-8 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Interactive Quizzes</h1>
@@ -100,12 +77,12 @@ export default function QuizzesPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {videoQuizzes.map(quiz => (
+        {videoQuizzes.map((quiz: any) => (
           <QuizEditor 
             key={quiz.id} 
             quiz={quiz}
             onDelete={handleDelete}
-            onEdit={(q) => {
+            onEdit={(q: any) => {
               setSelectedQuizId(q.id);
               setIsQuestionModalOpen(true);
             }}
@@ -114,7 +91,7 @@ export default function QuizzesPage() {
       </div>
 
       {videoQuizzes.length === 0 && (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg text-muted-foreground">
+        <div className="text-center py-12 border-2 border-dashed border-surface-border rounded-lg text-slate-400">
           No quizzes found for this video. Create one to get started.
         </div>
       )}

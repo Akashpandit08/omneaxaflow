@@ -17,7 +17,6 @@ import uuid
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from app.core.config import settings
 from app.services.avatar_animator import animate_avatar
 from app.services.storage import upload_file
 from app.services.tts import generate_tts_sync

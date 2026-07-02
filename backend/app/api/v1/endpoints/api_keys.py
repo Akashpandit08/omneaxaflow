@@ -36,7 +36,7 @@ async def create_api_key(body: ApiKeyCreate, current_user: CurrentUser, workspac
 async def list_api_keys(current_user: CurrentUser, workspace: CurrentWorkspace, db: DBSession):
     result = await db.execute(
         select(ApiKey)
-        .where(ApiKey.workspace_id == workspace.id, ApiKey.is_active == True)
+        .where(ApiKey.workspace_id == workspace.id, ApiKey.is_active.is_(True))
         .order_by(ApiKey.created_at.desc())
     )
     return list(result.scalars().all())

@@ -57,12 +57,12 @@ AVATARS = [
 ]
 
 VOICES = [
-    {"name": "Rachel (EN-US)", "provider": "gtts", "language": "en", "gender": "female", "accent": "American", "is_premium": False},
-    {"name": "James (EN-GB)", "provider": "gtts", "language": "en", "gender": "male", "accent": "British", "is_premium": False},
-    {"name": "Sophie (FR)", "provider": "gtts", "language": "fr", "gender": "female", "accent": "French", "is_premium": False},
-    {"name": "Carlos (ES)", "provider": "gtts", "language": "es", "gender": "male", "accent": "Spanish", "is_premium": False},
-    {"name": "Aria (EN-US)", "provider": "elevenlabs", "language": "en", "gender": "female", "accent": "American", "is_premium": True, "provider_voice_id": "9BWtsMINqrJLrRacOk9x"},
-    {"name": "Roger (EN-US)", "provider": "elevenlabs", "language": "en", "gender": "male", "accent": "American", "is_premium": True, "provider_voice_id": "CwhRBWXzGAHq8TQ4Fs17"},
+    {"name": "Free English (gTTS)", "provider": "gtts", "language": "en", "gender": "neutral", "accent": "Basic", "is_premium": False},
+    {"name": "Free French (gTTS)", "provider": "gtts", "language": "fr", "gender": "neutral", "accent": "Basic", "is_premium": False},
+    {"name": "Free Spanish (gTTS)", "provider": "gtts", "language": "es", "gender": "neutral", "accent": "Basic", "is_premium": False},
+    {"name": "Cartesia Default", "provider": "cartesia", "language": "en", "gender": "neutral", "accent": "Hosted", "is_premium": False, "provider_voice_id": settings.CARTESIA_DEFAULT_VOICE_ID or None},
+    {"name": "Polly Joanna", "provider": "polly", "language": "en", "gender": "female", "accent": "American", "is_premium": False, "provider_voice_id": "Joanna"},
+    {"name": "Polly Matthew", "provider": "polly", "language": "en", "gender": "male", "accent": "American", "is_premium": False, "provider_voice_id": "Matthew"},
 ]
 
 

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { User, Lock, Check, ChevronRight, Search, X } from "lucide-react";
-import api from "@/lib/api";
+import api, { resolveMediaUrl } from "@/lib/api";
 import type { Avatar, AvatarListResponse } from "@/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
@@ -41,11 +41,13 @@ function AvatarThumb({
   size?: "sm" | "md";
 }) {
   const cls = size === "md" ? "w-14 h-14 text-xl" : "w-10 h-10 text-sm";
-  if (avatar.thumbnail_url) {
+  const thumbnailUrl = resolveMediaUrl(avatar.thumbnail_url);
+
+  if (thumbnailUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={avatar.thumbnail_url}
+        src={thumbnailUrl}
         alt={avatar.name}
         className={cn("rounded-full object-cover flex-shrink-0", cls)}
       />

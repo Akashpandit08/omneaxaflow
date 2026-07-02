@@ -21,6 +21,7 @@ from app.core.security import (
 )
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.models.plan import Plan, PlanTier
 from app.schemas.auth import (
     LoginRequest,
     MfaRequiredResponse,
@@ -71,7 +72,21 @@ async def register(body: RegisterRequest, db: DBSession):
     db.add(user)
     await db.flush()
 
-    sub = Subscription(user_id=user.id, plan="free")
+    free_plan_result = await db.execute(select(Plan).where(Plan.tier == PlanTier.FREE))
+    free_plan = free_plan_result.scalar_one_or_none()
+    if not free_plan:
+        free_plan = Plan(
+            name="Free",
+            tier=PlanTier.FREE,
+            monthly_video_limit=5,
+            max_video_duration_seconds=60,
+            storage_gb=1,
+            price_cents=0,
+        )
+        db.add(free_plan)
+        await db.flush()
+
+    sub = Subscription(user_id=user.id, plan_id=free_plan.id)
     db.add(sub)
 
     await db.commit()

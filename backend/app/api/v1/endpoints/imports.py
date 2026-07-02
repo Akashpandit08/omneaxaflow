@@ -1,14 +1,14 @@
 import os
 import shutil
-from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File, status, BackgroundTasks
+import uuid
+from fastapi import APIRouter, HTTPException, UploadFile, File, status
 from sqlalchemy import select, func
 
+from app.core.config import settings
 from app.core.deps import CurrentUser, DBSession, CurrentWorkspace
 from app.models.content import ImportJob, ImportJobStatus
 from app.schemas.content import ImportJobOut, ImportJobListOut
 from app.workers.import_tasks import process_import_task
-from app.services.storage import upload_file
 
 router = APIRouter()
 
@@ -27,27 +27,24 @@ async def upload_import_file(
         "application/vnd.ms-powerpoint",
         "application/pdf",
     ]
-    # some basic check
-    if file.content_type not in allowed_types and not file.filename.endswith((".pptx", ".ppt", ".pdf")):
+    filename = file.filename or ""
+    if file.content_type not in allowed_types and not filename.lower().endswith((".pptx", ".ppt", ".pdf")):
         raise HTTPException(status_code=400, detail="Invalid file type. Only PPTX and PDF are allowed.")
 
-    # In production we would upload to S3. Here we simulate it by storing locally in /tmp or media/tmp
-    # But for a robust local implementation:
-    upload_dir = "/app/media/imports"
+    upload_dir = os.path.join(settings.LOCAL_STORAGE_PATH, "imports", str(workspace.id))
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f"{current_user.id}_{file.filename}")
+    safe_ext = os.path.splitext(filename)[1].lower()
+    file_path = os.path.join(upload_dir, f"{current_user.id}_{uuid.uuid4()}{safe_ext}")
     
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Assuming a fake S3 URL for this demonstration or local path
     file_url = file_path 
 
-    # Create job record
     job = ImportJob(
         workspace_id=workspace.id,
         user_id=current_user.id,
-        file_name=file.filename,
+        file_name=filename,
         file_type=file.content_type if file.content_type else "unknown",
         file_url=file_url,
         status=ImportJobStatus.uploaded

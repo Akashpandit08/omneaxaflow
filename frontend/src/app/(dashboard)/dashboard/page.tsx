@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { Progress } from "@/components/ui/Progress";
 import { LinkButton, Button } from "@/components/ui/Button";
+import { QuickVideoCreator } from "@/components/dashboard/QuickVideoCreator";
 
 function SkeletonStatCard() {
   return (
@@ -78,6 +79,8 @@ export default function DashboardPage() {
           New project
         </LinkButton>
       </div>
+
+      <QuickVideoCreator />
 
       {/* ── Analytics Cards ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

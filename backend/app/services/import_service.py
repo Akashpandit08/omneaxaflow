@@ -1,6 +1,4 @@
-import os
-import tempfile
-from typing import Dict, Any, List
+from typing import Dict, Any
 from pptx import Presentation
 import pymupdf  # fitz
 

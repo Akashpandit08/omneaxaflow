@@ -63,7 +63,7 @@ function VideoCard({ video, onRetry, onDownload, onComments }: { video: Video, o
         </div>
         
         {/* Actions */}
-        <div className="mt-4 pt-3 border-t border-surface-border flex gap-2">
+        <div className="mt-4 pt-3 border-t border-surface-border flex flex-wrap gap-2">
           <Button
             variant="secondary"
             size="sm"
@@ -73,15 +73,31 @@ function VideoCard({ video, onRetry, onDownload, onComments }: { video: Video, o
             Comments
           </Button>
           {video.status === "completed" && (
-            <Button
-              variant="primary"
-              size="sm"
-              className="w-full"
-              leftIcon={<Download className="w-3.5 h-3.5" />}
-              onClick={() => onDownload(video.id)}
-            >
-              Download
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => window.location.href = `/videos/${video.id}/quizzes`}
+              >
+                Quizzes
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => window.location.href = `/videos/${video.id}/scorm`}
+              >
+                SCORM
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                className="flex-1"
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                onClick={() => onDownload(video.id)}
+              >
+                Download
+              </Button>
+            </>
           )}
           {video.status === "failed" && (
             <Button

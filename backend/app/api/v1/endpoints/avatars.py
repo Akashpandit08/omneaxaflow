@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from sqlalchemy import func, or_, select
 from starlette.concurrency import run_in_threadpool
 
-from app.core.deps import CurrentUser, DBSession, CurrentWorkspace, RequireRole
+from app.core.deps import CurrentUser, DBSession, CurrentWorkspace, RequireRole, OptionalWorkspace
 from app.models.avatar import Avatar
 from app.schemas.avatar import AvatarListOut, AvatarOut
 from app.services.storage import upload_bytes
@@ -28,7 +28,7 @@ UPLOAD_EXTENSIONS = {
 @router.get("", response_model=AvatarListOut)
 async def list_avatars(
     current_user: CurrentUser,
-    workspace: CurrentWorkspace,
+    workspace: OptionalWorkspace,
     db: DBSession,
     # Search & filters
     search: str | None = Query(None, description="Case-insensitive name search"),
@@ -41,7 +41,7 @@ async def list_avatars(
 ):
     query = select(Avatar).where(
         Avatar.is_active == True,  # noqa: E712
-        or_(Avatar.workspace_id.is_(None), Avatar.workspace_id == workspace.id),
+        or_(Avatar.workspace_id.is_(None), Avatar.workspace_id == workspace.id) if workspace else Avatar.workspace_id.is_(None),
     )
 
     if search:
@@ -74,7 +74,7 @@ async def list_avatars(
 @router.post("/upload", response_model=AvatarOut, status_code=status.HTTP_201_CREATED, dependencies=[RequireRole(["owner", "admin"])])
 async def upload_avatar(
     current_user: CurrentUser,
-    workspace: CurrentWorkspace,
+    workspace: OptionalWorkspace,
     db: DBSession,
     file: UploadFile = File(...),
     name: str = Form(...),
@@ -128,14 +128,14 @@ async def upload_avatar(
 async def get_avatar(
     avatar_id: int,
     current_user: CurrentUser,
-    workspace: CurrentWorkspace,
+    workspace: OptionalWorkspace,
     db: DBSession,
 ):
     result = await db.execute(
         select(Avatar).where(
             Avatar.id == avatar_id,
             Avatar.is_active == True,  # noqa: E712
-            or_(Avatar.workspace_id.is_(None), Avatar.workspace_id == workspace.id),
+            or_(Avatar.workspace_id.is_(None), Avatar.workspace_id == workspace.id) if workspace else Avatar.workspace_id.is_(None),
         )
     )
     avatar = result.scalar_one_or_none()

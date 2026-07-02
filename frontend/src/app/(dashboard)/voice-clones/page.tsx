@@ -2,45 +2,37 @@
 
 import React, { useEffect, useState } from "react";
 import { VoiceCloneUploader } from "@/components/voice/VoiceCloneUploader";
+import { VoiceRecorder } from "@/components/voice/VoiceRecorder";
 import { VoiceCloneCard } from "@/components/voice/VoiceCloneCard";
 import { VoicePreviewPlayer } from "@/components/voice/VoicePreviewPlayer";
 import { useVoiceCloneStore } from "@/store/voiceCloneStore";
+import { Button } from "@/components/ui/Button";
+import {
+  createVoiceClone,
+  deleteVoiceClone,
+  generateVoiceClonePreview,
+  listVoiceClones,
+  retrainVoiceClone,
+} from "@/lib/api";
 
 export default function VoiceClonesPage() {
   const { clones, setClones, addClone, removeClone } = useVoiceCloneStore();
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"record" | "upload">("record");
+  const [provider, setProvider] = useState<string>("cartesia");
 
   useEffect(() => {
-    fetch("/api/v1/voices/clones", {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-    })
-      .then(res => res.json())
-      .then(data => setClones(data))
+    listVoiceClones()
+      .then(setClones)
       .catch(console.error);
   }, [setClones]);
 
   const handleUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      // Create clone entry
-      const res = await fetch("/api/v1/voices/clone", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({
-          name: file.name.split('.')[0],
-          provider: "elevenlabs" // default
-        })
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
+      const data = await createVoiceClone(file, file.name.split(".")[0] || "My Voice Clone", provider);
       addClone(data);
-      
-      // We would normally upload the audio file to S3 here
       
     } catch (err) {
       console.error(err);
@@ -52,32 +44,30 @@ export default function VoiceClonesPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/voices/clones/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        removeClone(id);
-      }
+      await deleteVoiceClone(id);
+      removeClone(id);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handlePreview = async (id: number) => {
+  const handleRetrain = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/voices/clones/${id}/preview`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPreviewUrl(data.preview_url);
-      } else {
-        alert("Preview not ready or failed to generate.");
-      }
+      const data = await retrainVoiceClone(id);
+      setClones(clones.map(c => c.id === id ? data : c));
     } catch (err) {
       console.error(err);
+      alert("Failed to retrain voice clone");
+    }
+  };
+
+  const handlePreview = async (id: number) => {
+    try {
+      const data = await generateVoiceClonePreview(id);
+      setPreviewUrl(data.preview_url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Preview not ready or failed to generate.");
     }
   };
 
@@ -86,11 +76,52 @@ export default function VoiceClonesPage() {
       <div>
         <h1 className="text-3xl font-bold">Voice Clones</h1>
         <p className="text-muted-foreground mt-2">
-          Create custom AI voices by uploading a short audio sample of yourself or your talent.
+          Create custom AI voices by recording a short audio sample of yourself or uploading a file.
         </p>
       </div>
 
-      <VoiceCloneUploader onUpload={handleUpload} isUploading={isUploading} />
+      <div className="p-4 border rounded-lg bg-card">
+        <label className="block text-sm font-medium mb-2">Select Provider</label>
+        <select 
+          value={provider} 
+          onChange={(e) => setProvider(e.target.value)}
+          className="w-full md:w-1/3 p-2 border rounded-md mb-4 bg-background text-foreground"
+        >
+          <option value="cartesia">Cartesia (Hosted/free trial)</option>
+          <option value="xtts">XTTS (Local/heavy)</option>
+          <option value="elevenlabs">ElevenLabs (disabled unless explicitly enabled)</option>
+          <option value="polly">Amazon Polly (TTS only)</option>
+        </select>
+
+        {provider === "cartesia" && <p className="text-sm text-muted-foreground">Hosted voice cloning without running XTTS on your computer.</p>}
+
+        {provider === "xtts" && <p className="text-sm text-muted-foreground">Local voice cloning without ElevenLabs API calls.</p>}
+
+        {provider === "elevenlabs" && <p className="text-sm text-muted-foreground">Requires ENABLE_ELEVENLABS_TTS=true and an API key.</p>}
+
+        {provider === "polly" && <p className="text-sm text-muted-foreground">TTS available. Voice cloning unavailable.</p>}
+      </div>
+
+      <div className="flex space-x-2 border-b border-border mb-6 pb-2">
+        <Button 
+          variant={activeTab === "record" ? "primary" : "ghost"} 
+          onClick={() => setActiveTab("record")}
+        >
+          Record Voice
+        </Button>
+        <Button 
+          variant={activeTab === "upload" ? "primary" : "ghost"} 
+          onClick={() => setActiveTab("upload")}
+        >
+          Upload Audio File
+        </Button>
+      </div>
+
+      {activeTab === "record" ? (
+        <VoiceRecorder onUpload={handleUpload} isUploading={isUploading} />
+      ) : (
+        <VoiceCloneUploader onUpload={handleUpload} isUploading={isUploading} />
+      )}
 
       {clones.length > 0 && (
         <div className="pt-8 border-t">
@@ -102,6 +133,7 @@ export default function VoiceClonesPage() {
                 clone={clone} 
                 onDelete={handleDelete}
                 onPreview={handlePreview}
+                onRetrain={handleRetrain}
               />
             ))}
           </div>

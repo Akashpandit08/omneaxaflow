@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { PageLoader } from "@/components/ui/Loader";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, fetchMe } = useAuthStore();
+  const { isAuthenticated, isLoading: authLoading, fetchMe } = useAuthStore();
+  const { fetchWorkspaces } = useWorkspaceStore();
   const router = useRouter();
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    fetchMe().then(() => {
+    Promise.all([fetchMe(), fetchWorkspaces()]).then(() => {
+      setIsInitializing(false);
       if (!useAuthStore.getState().isAuthenticated) {
         router.replace("/login");
       }
@@ -20,7 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (isLoading) {
+  if (authLoading || isInitializing) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
         <PageLoader message="Loading workspace…" />

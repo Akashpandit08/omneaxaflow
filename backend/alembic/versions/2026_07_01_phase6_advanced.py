@@ -1,7 +1,7 @@
 """phase6 advanced features
 
 Revision ID: 2026_07_01_phase6
-Revises: 2026_07_01_phase5
+Revises: phase5_content_001
 Create Date: 2026-07-01 10:00:00.000000
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '2026_07_01_phase6'
-down_revision: Union[str, None] = '2026_07_01_phase5'
+down_revision: Union[str, None] = 'phase5_content_001'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,39 +1,84 @@
+# ============================================================
 # Python
+# ============================================================
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
-venv/
 *.egg
 dist/
 build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
-# Environment
+# Virtual environments
+.venv/
+venv/
+backend/venv/
+
+# ============================================================
+# Environment & Secrets  ← CRITICAL: never commit these
+# ============================================================
 .env
 .env.local
 .env.production
+.env.bak
+backend/.env
+frontend/.env
+frontend/.env.local
 
+# ============================================================
 # Node / Next.js
+# ============================================================
 node_modules/
 .next/
 out/
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
 
-# Docker
-*.log
+# ============================================================
+# Database files
+# ============================================================
+*.db
+*.sqlite
+*.sqlite3
+backend/test.db
 
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# Media uploads (large files)
+# ============================================================
+# Media uploads & generated files (large / sensitive)
+# ============================================================
 backend/media/video/
 backend/media/audio/
 backend/media/tmp/
+backend/media/
 
+# ============================================================
+# Docker
+# ============================================================
+*.log
+docker-compose.yml.save
+docker-compose.override.yml
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================================
 # OS
+# ============================================================
 .DS_Store
 Thumbs.db
-docker-compose.yml.save git add .gitignore git commit -m Ignore docker-compose backup file git push origin main
-docker-compose.yml.save git add .gitignore git commit -m Ignore docker-compose backup file git push origin main
+desktop.ini
+
+# ============================================================
+# Misc scratch / temp files
+# ============================================================
+scratch/
+diff.txt
+backend/diff.txt

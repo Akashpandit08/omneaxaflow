@@ -21,7 +21,8 @@ import {
   ChevronDown,
   FileStack,
   ShieldCheck,
-  ClipboardList
+  ClipboardList,
+  ServerIcon
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useWorkspaceStore } from "@/store/workspaceStore";
@@ -62,6 +63,7 @@ const NAV_GROUPS = [
       { href: "/settings/branding", icon: Palette, label: "Branding" },
       { href: "/settings/security", icon: ShieldCheck, label: "Security" },
       { href: "/settings/api", icon: Code, label: "Developer API" },
+      { href: "/settings/ai-providers", icon: ServerIcon, label: "AI Providers" },
     ],
   },
 ];

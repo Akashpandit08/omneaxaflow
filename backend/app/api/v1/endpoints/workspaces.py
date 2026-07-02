@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends
-from sqlalchemy import select, update, delete
+from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, UTC, timedelta
 import secrets
 import hashlib
@@ -125,7 +125,7 @@ async def create_invitation(workspace_id: int, email: str, role: str, workspace:
         WorkspaceInvitation.workspace_id == workspace.id,
         WorkspaceInvitation.email == email,
         WorkspaceInvitation.expires_at > datetime.now(UTC),
-        WorkspaceInvitation.accepted_at == None
+        WorkspaceInvitation.accepted_at.is_(None)
     )
     if (await db.execute(inv_stmt)).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Active invitation already exists for this email")
@@ -149,7 +149,7 @@ async def create_invitation(workspace_id: int, email: str, role: str, workspace:
 
 @router.get("/{workspace_id}/invitations", dependencies=[RequireRole(["owner", "admin"])])
 async def get_invitations(workspace_id: int, workspace: CurrentWorkspace, db: DBSession):
-    stmt = select(WorkspaceInvitation).where(WorkspaceInvitation.workspace_id == workspace.id, WorkspaceInvitation.accepted_at == None)
+    stmt = select(WorkspaceInvitation).where(WorkspaceInvitation.workspace_id == workspace.id, WorkspaceInvitation.accepted_at.is_(None))
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -170,7 +170,7 @@ async def accept_invitation(token: str, current_user: CurrentUser, db: DBSession
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     stmt = select(WorkspaceInvitation).where(
         WorkspaceInvitation.token_hash == token_hash,
-        WorkspaceInvitation.accepted_at == None,
+        WorkspaceInvitation.accepted_at.is_(None),
         WorkspaceInvitation.expires_at > datetime.now(UTC)
     )
     invitation = (await db.execute(stmt)).scalar_one_or_none()
@@ -229,4 +229,3 @@ async def leave_workspace(workspace_id: int, workspace: CurrentWorkspace, curren
         await db.commit()
         
     return {"message": "Left workspace"}
-

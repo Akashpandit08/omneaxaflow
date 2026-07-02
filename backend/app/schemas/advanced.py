@@ -1,5 +1,5 @@
-from pydantic import BaseModel, HttpUrl
-from typing import List, Optional, Any
+from pydantic import BaseModel
+from typing import List, Optional
 from datetime import datetime
 
 # Voice Clone Schemas
@@ -15,11 +15,16 @@ class VoiceCloneUpdate(BaseModel):
     provider_voice_id: Optional[str] = None
     preview_url: Optional[str] = None
 
+from typing import Any
+
 class VoiceCloneOut(VoiceCloneBase):
     id: int
     workspace_id: int
     user_id: int
     provider_voice_id: Optional[str] = None
+    provider_status: Optional[str] = None
+    provider_error: Optional[str] = None
+    provider_metadata: Optional[Any] = None
     sample_audio_url: str
     preview_url: Optional[str] = None
     status: str

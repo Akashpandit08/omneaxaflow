@@ -6,7 +6,6 @@ import logging
 import socket
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -57,7 +56,7 @@ def dispatch_webhook_event(db, user_id: int, event_type: str, payload: dict) -> 
     # Find all active webhooks for this user that subscribe to event_type
     stmt = select(Webhook).where(
         Webhook.user_id == user_id,
-        Webhook.is_active == True,
+        Webhook.is_active.is_(True),
     )
     webhooks = db.execute(stmt).scalars().all()
     

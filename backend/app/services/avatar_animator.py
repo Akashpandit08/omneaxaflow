@@ -19,7 +19,6 @@ from typing import Optional
 import httpx
 
 from app.core.config import settings
-from app.services.storage import upload_file
 
 MEDIA_TMP = Path("/app/media/tmp")
 

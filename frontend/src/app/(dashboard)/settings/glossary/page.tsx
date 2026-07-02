@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useGlossaryStore } from "@/store/glossaryStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { createGlossaryTerm, deleteGlossaryTerm, listGlossaryTerms } from "@/lib/api";
 
 export default function GlossaryPage() {
   const { terms, setTerms, addTerm, removeTerm } = useGlossaryStore();
@@ -12,12 +13,8 @@ export default function GlossaryPage() {
   const [description, setDescription] = useState("");
 
   useEffect(() => {
-    // Fetch terms
-    fetch("/api/v1/brand-glossary", {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-    })
-      .then(res => res.json())
-      .then(data => setTerms(data.items || []))
+    listGlossaryTerms()
+      .then(setTerms)
       .catch(console.error);
   }, [setTerms]);
 
@@ -26,37 +23,21 @@ export default function GlossaryPage() {
     if (!newTerm || !newReplacement) return;
     
     try {
-      const res = await fetch("/api/v1/brand-glossary", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        },
-        body: JSON.stringify({ term: newTerm, replacement: newReplacement, description })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        addTerm(data);
-        setNewTerm("");
-        setNewReplacement("");
-        setDescription("");
-      } else {
-        alert("Failed to add term. It might already exist.");
-      }
+      const data = await createGlossaryTerm({ term: newTerm, replacement: newReplacement, description });
+      addTerm(data);
+      setNewTerm("");
+      setNewReplacement("");
+      setDescription("");
     } catch (err) {
       console.error(err);
+      alert(err instanceof Error ? err.message : "Failed to add term. It might already exist.");
     }
   };
 
   const handleDelete = async (id: number) => {
     try {
-      const res = await fetch(`/api/v1/brand-glossary/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
-      });
-      if (res.ok) {
-        removeTerm(id);
-      }
+      await deleteGlossaryTerm(id);
+      removeTerm(id);
     } catch (err) {
       console.error(err);
     }

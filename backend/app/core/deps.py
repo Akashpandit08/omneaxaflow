@@ -2,16 +2,21 @@
 FastAPI dependency injection — current user, DB session, etc.
 """
 
+import logging
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.core.database import get_db
-from app.core.security import decode_token
+from app.core.security import API_KEY_LOOKUP_PREFIX_LENGTH, decode_token, verify_password
+from app.models.api_key import ApiKey
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -40,13 +45,6 @@ async def get_current_user(
     return user
 
 
-from fastapi.security import APIKeyHeader
-from app.models.api_key import ApiKey
-from app.core.security import verify_password, API_KEY_LOOKUP_PREFIX_LENGTH
-from datetime import UTC, datetime
-from sqlalchemy.orm import joinedload
-import logging
-
 logger = logging.getLogger(__name__)
 
 oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -65,7 +63,7 @@ async def get_current_user_any_auth(
         stmt = (
             select(ApiKey)
             .options(joinedload(ApiKey.user))
-            .where(ApiKey.key_prefix == key_prefix, ApiKey.is_active == True)
+            .where(ApiKey.key_prefix == key_prefix, ApiKey.is_active.is_(True))
         )
         result = await db.execute(stmt)
         db_api_key = result.scalar_one_or_none()
@@ -95,9 +93,6 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentUserAnyAuth = Annotated[User, Depends(get_current_user_any_auth)]
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 
-from fastapi import Header
-from app.models.workspace import Workspace, WorkspaceMember
-
 async def get_current_workspace(
     request: Request,
     user: CurrentUserAnyAuth,
@@ -116,21 +111,40 @@ async def get_current_workspace(
     elif x_workspace_id:
         workspace_id = int(x_workspace_id)
         
-    if not workspace_id:
-        raise HTTPException(status_code=400, detail="X-Workspace-ID header is required")
-
-    # Fetch workspace and check membership
-    stmt = (
-        select(Workspace)
-        .join(WorkspaceMember, Workspace.id == WorkspaceMember.workspace_id)
-        .where(
-            Workspace.id == workspace_id,
-            WorkspaceMember.user_id == user.id,
-            WorkspaceMember.status == "active"
+    workspace = None
+    if workspace_id:
+        # Fetch workspace and check membership
+        stmt = (
+            select(Workspace)
+            .join(WorkspaceMember, Workspace.id == WorkspaceMember.workspace_id)
+            .where(
+                Workspace.id == workspace_id,
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.status == "active"
+            )
         )
-    )
-    result = await db.execute(stmt)
-    workspace = result.scalar_one_or_none()
+        result = await db.execute(stmt)
+        workspace = result.scalar_one_or_none()
+    else:
+        # Fall back to the user's first active workspace if the header is missing
+        stmt = (
+            select(Workspace)
+            .join(WorkspaceMember, Workspace.id == WorkspaceMember.workspace_id)
+            .where(
+                WorkspaceMember.user_id == user.id,
+                WorkspaceMember.status == "active"
+            )
+            .order_by(Workspace.created_at)
+        )
+        result = await db.execute(stmt)
+        workspace = result.scalars().first()
+        if workspace:
+            workspace_id = workspace.id
+
+    if not workspace:
+        if not workspace_id:
+            raise HTTPException(status_code=400, detail="X-Workspace-ID header is required and user has no active workspaces")
+        raise HTTPException(status_code=403, detail="Not an active member of this workspace")
     
     if not workspace:
         raise HTTPException(status_code=403, detail="Not an active member of this workspace")
@@ -156,6 +170,48 @@ async def get_current_workspace(
 
     return workspace
 
+
+
+async def get_optional_workspace(
+    request: Request,
+    user: User = Depends(get_current_user_any_auth),
+    db: AsyncSession = Depends(get_db),
+    x_workspace_id: str | None = Header(None, alias="X-Workspace-ID")
+) -> Workspace | None:
+    workspace_id = None
+    if hasattr(request.state, "api_key_workspace_id") and request.state.api_key_workspace_id:
+        workspace_id = request.state.api_key_workspace_id
+    elif x_workspace_id:
+        workspace_id = int(x_workspace_id)
+        
+    if not workspace_id:
+        return None
+
+    stmt = (
+        select(Workspace)
+        .join(WorkspaceMember, Workspace.id == WorkspaceMember.workspace_id)
+        .where(
+            Workspace.id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+            WorkspaceMember.status == "active"
+        )
+    )
+    result = await db.execute(stmt)
+    workspace = result.scalar_one_or_none()
+    
+    if workspace:
+        request.state.workspace = workspace
+        member_stmt = select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id
+        )
+        member_result = await db.execute(member_stmt)
+        member = member_result.scalar_one_or_none()
+        request.state.workspace_role = member.role if member else None
+
+    return workspace
+
+OptionalWorkspace = Annotated[Workspace | None, Depends(get_optional_workspace)]
 
 CurrentWorkspace = Annotated[Workspace, Depends(get_current_workspace)]
 

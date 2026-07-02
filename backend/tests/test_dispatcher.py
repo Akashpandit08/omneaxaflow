@@ -1,6 +1,4 @@
-import pytest
 import httpx
-import json
 import hmac
 import hashlib
 from unittest.mock import MagicMock, patch

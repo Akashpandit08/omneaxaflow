@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { BuildingOfficeIcon, UserGroupIcon, Cog6ToothIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useWorkspaceStore } from '@/store/workspaceStore';
+import api from '@/lib/api';
 
 export default function WorkspaceSettingsPage() {
   const { currentWorkspace } = useWorkspaceStore();
@@ -11,12 +12,18 @@ export default function WorkspaceSettingsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentWorkspace) return;
+    
     setIsSaving(true);
-    // Mock save
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await api.patch(`/workspaces/${currentWorkspace.id}?name=${encodeURIComponent(workspaceName)}`);
       alert('Workspace settings saved');
-    }, 1000);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save workspace settings');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -74,7 +81,22 @@ export default function WorkspaceSettingsPage() {
               <h3 className="text-white font-medium">Delete Workspace</h3>
               <p className="text-sm text-slate-400 mt-1">Permanently remove this workspace and all its data.</p>
             </div>
-            <button className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors font-medium border border-red-500/20">
+            <button 
+              onClick={async () => {
+                if (!currentWorkspace) return;
+                if (confirm('Are you sure you want to delete this workspace? This action cannot be undone.')) {
+                  try {
+                    await api.delete(`/workspaces/${currentWorkspace.id}`);
+                    alert('Workspace deleted');
+                    window.location.href = '/projects';
+                  } catch (err) {
+                    console.error(err);
+                    alert('Failed to delete workspace. You must be the owner.');
+                  }
+                }
+              }}
+              className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-colors font-medium border border-red-500/20"
+            >
               Delete Workspace
             </button>
           </div>

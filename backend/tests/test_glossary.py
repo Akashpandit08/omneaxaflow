@@ -1,4 +1,3 @@
-import pytest
 from app.services.glossary_service import GlossaryService
 from app.models.content import BrandGlossary
 

@@ -1,7 +1,5 @@
-import pytest
 from unittest.mock import MagicMock
 from app.services.import_service import ImportService
-from app.models.content import ImportJobStatus
 
 def test_parse_pptx(tmp_path):
     # For a real test, we would generate a valid PPTX using python-pptx or load a fixture

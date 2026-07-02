@@ -6,8 +6,9 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 
 from app.core.deps import CurrentUserAnyAuth, DBSession, CurrentWorkspace, RequireRole, user_has_permission
-from app.models.project import Project, ProjectStatus
+from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectListOut, ProjectOut, ProjectUpdate
+from app.services.analytics import track_event
 
 router = APIRouter()
 
@@ -37,9 +38,6 @@ async def list_projects(
     items = result.scalars().all()
 
     return ProjectListOut(items=list(items), total=total, page=page, page_size=page_size)
-
-
-from app.services.analytics import track_event
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED, dependencies=[RequireRole(["owner", "admin", "member"])])
 async def create_project(body: ProjectCreate, current_user: CurrentUserAnyAuth, workspace: CurrentWorkspace, db: DBSession):

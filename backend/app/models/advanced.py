@@ -1,8 +1,9 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Float
 from sqlalchemy.orm import relationship
 
-from app.db.base_class import Base
-from app.models.mixins import TimestampMixin
+from app.models.base import Base, TimestampMixin
+
+from sqlalchemy import Text
 
 class VoiceClone(Base, TimestampMixin):
     __tablename__ = "voice_clones"
@@ -11,8 +12,11 @@ class VoiceClone(Base, TimestampMixin):
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String(255), nullable=False)
-    provider = Column(String(50), nullable=False)  # 'elevenlabs', 'polly'
+    provider = Column(String(50), nullable=False)  # 'cartesia', 'xtts', 'elevenlabs', 'polly'
     provider_voice_id = Column(String(255), nullable=True)
+    provider_status = Column(String(50), nullable=True)
+    provider_error = Column(Text, nullable=True)
+    provider_metadata = Column(JSON, nullable=True)
     sample_audio_url = Column(String(1024), nullable=False)
     preview_url = Column(String(1024), nullable=True)
     status = Column(String(50), nullable=False, default="uploaded")  # uploaded, training, ready, failed

@@ -1,11 +1,20 @@
-import asyncio
-from app.db.session import SessionLocal
+import logging
+from celery import shared_task
 from app.models.advanced import VoiceClone
-from app.services.voice_service import VoiceService
+from app.services.voice.providers.factory import VoiceProviderFactory
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 def _get_sync_db():
-    return SessionLocal()
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
+    engine = create_engine(sync_url, pool_pre_ping=True)
+    Session = sessionmaker(bind=engine)
+    return Session()
 
+@shared_task(name='app.workers.voice_tasks.train_voice_clone_task')
 def train_voice_clone_task(clone_id: int):
     """Celery task to train voice clone asynchronously."""
     db = _get_sync_db()
@@ -15,33 +24,47 @@ def train_voice_clone_task(clone_id: int):
         db.close()
         return
 
+    logger.info("Task received")
+    
     try:
         clone.status = "training"
         db.commit()
 
-        # Init service
-        service = VoiceService()
+        # Init provider
+        provider = VoiceProviderFactory.get(clone.provider)
         
-        # Download sample audio if needed, for mock we just pass the URL or mock file path
-        # In a real scenario we download sample_audio_url to local temp
+        if not clone.sample_audio_url.startswith("/media/"):
+            raise RuntimeError("Voice clone sample path is invalid.")
+        relative_media_path = clone.sample_audio_url.removeprefix("/media/")
+        local_file_path = f"{settings.LOCAL_STORAGE_PATH.rstrip('/')}/{relative_media_path}"
+        
+        logger.info("Uploading audio")
         
         # Train
-        provider_voice_id = service.train_voice(
+        provider_voice_id = provider.clone_voice(
             name=clone.name,
-            file_path="mock_audio.wav", # Should be downloaded path
-            provider=clone.provider
+            file_path=local_file_path,
+            description=f"Cloned via AiVideo ({clone.provider})"
         )
         
+        logger.info("Voice clone created")
         clone.provider_voice_id = provider_voice_id
+        clone.provider_status = "ready"
+        clone.provider_error = None
         
         # Generate preview
-        preview_url = service.generate_preview(provider_voice_id, clone.provider)
+        preview_url = provider.generate_preview(provider_voice_id)
+        if not preview_url:
+            raise RuntimeError("Voice preview generation did not return a URL.")
         clone.preview_url = preview_url
         clone.status = "ready"
+        logger.info("Database updated")
         db.commit()
     except Exception as e:
-        print(f"Failed to train voice clone {clone_id}: {e}")
+        logger.exception(f"Voice clone failed for {clone.provider}: {str(e)}")
         clone.status = "failed"
+        clone.provider_status = "failed"
+        clone.provider_error = str(e)
         db.commit()
     finally:
         db.close()
